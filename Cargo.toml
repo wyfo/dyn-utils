@@ -1,0 +1,30 @@
+[workspace]
+members = ["macros"]
+
+[package]
+name = "dyn-utils"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = ["alloc"]
+alloc = []
+either = ["dep:either"]
+
+[dependencies]
+elain = "0.3.0"
+either = { version = "1", optional = true }
+dyn-utils-macros = { path = "macros" }
+
+[dev-dependencies]
+async-trait = "0.1.89"
+divan = "0.1"
+dynify = "0.1.2"
+
+[[bench]]
+name = "comparison"
+harness = false
+required-features = ["alloc"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
