@@ -9,7 +9,7 @@ use core::{
 
 use elain::{Align, Alignment};
 
-use crate::{private, private::StorageVTable, Storage};
+use crate::{private, Storage};
 
 pub struct DynStorage<
     'a,
