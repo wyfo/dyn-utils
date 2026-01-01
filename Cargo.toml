@@ -18,6 +18,10 @@ dyn-utils-macros = { path = "macros" }
 async-trait = "0.1.89"
 divan = "0.1"
 dynify = "0.1.2"
+futures = "0.3.31"
+
+[lib]
+bench = false
 
 [[bench]]
 name = "comparison"
@@ -25,3 +29,6 @@ harness = false
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
+
+[lints.clippy]
+missing_safety_doc = "allow"

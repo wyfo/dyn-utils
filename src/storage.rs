@@ -6,42 +6,35 @@ use core::{
     hint::unreachable_unchecked,
     marker::{PhantomData, PhantomPinned},
     mem::MaybeUninit,
+    pin::Pin,
     ptr::NonNull,
 };
 
 use elain::{Align, Alignment};
 
-use crate::{private, Storage};
+use crate::{private, DefaultStorage, Storage};
 
-pub struct DynStorage<
-    'a,
-    S: Storage,
-    VT: private::StorageVTable,
-    T: ?Sized = <VT as private::StorageVTable>::DynTrait,
-> {
+pub struct DynStorage<T: private::DynTrait + ?Sized, S: Storage = DefaultStorage> {
     inner: S,
-    vtable: &'static VT,
-    _lifetime: PhantomData<&'a mut T>,
+    vtable: &'static T::VTable,
 }
 
-unsafe impl<S: Storage, VT: private::StorageVTable, T: ?Sized> Send for DynStorage<'_, S, VT, T> {}
+unsafe impl<S: Storage, T: private::DynTrait + ?Sized> Send for DynStorage<T, S> {}
 
-unsafe impl<S: Storage, VT: private::StorageVTable, T: ?Sized> Sync for DynStorage<'_, S, VT, T> {}
+unsafe impl<S: Storage, T: private::DynTrait + ?Sized> Sync for DynStorage<T, S> {}
 
-impl<S: Storage, VT: private::StorageVTable, T: ?Sized> DynStorage<'_, S, VT, T> {
-    /// # Safety
-    ///
-    /// `vtable.drop_vtable()` must match the storage `inner` and the data stored inside.
-    pub const unsafe fn from_raw_parts(inner: S, vtable: &'static VT) -> Self {
+impl<S: Storage, T: private::DynTrait + ?Sized> DynStorage<T, S> {
+    pub fn new<Data>(data: Data) -> Self
+    where
+        T: private::NewVTable<Data>,
+    {
         Self {
-            inner,
-            vtable,
-            _lifetime: PhantomData,
+            inner: S::new(data),
+            vtable: T::new_vtable::<S>(),
         }
     }
-
     #[doc(hidden)]
-    pub fn vtable(&self) -> &'static VT {
+    pub fn vtable(&self) -> &'static T::VTable {
         self.vtable
     }
 
@@ -54,10 +47,16 @@ impl<S: Storage, VT: private::StorageVTable, T: ?Sized> DynStorage<'_, S, VT, T>
     pub fn inner_mut(&mut self) -> &mut S {
         &mut self.inner
     }
+
+    #[doc(hidden)]
+    pub fn inner_pinned_mut(self: Pin<&mut Self>) -> Pin<&mut S> {
+        unsafe { self.map_unchecked_mut(|this| &mut this.inner) }
+    }
 }
 
-impl<S: Storage, VT: private::StorageVTable, T: ?Sized> Drop for DynStorage<'_, S, VT, T> {
+impl<S: Storage, T: private::DynTrait + ?Sized> Drop for DynStorage<T, S> {
     fn drop(&mut self) {
+        use private::StorageVTable;
         if let Some(drop_inner) = self.vtable.drop_in_place() {
             // SAFETY: the storage data is no longer accessed after the call,
             // and is matched by the vtable as per function contract.
@@ -69,8 +68,9 @@ impl<S: Storage, VT: private::StorageVTable, T: ?Sized> Drop for DynStorage<'_, 
     }
 }
 
-impl<S: Storage + fmt::Debug, VT: private::StorageVTable + fmt::Debug, T: ?Sized> fmt::Debug
-    for DynStorage<'_, S, VT, T>
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl<S: Storage + fmt::Debug, T: private::DynTrait<VTable: fmt::Debug> + ?Sized> fmt::Debug
+    for DynStorage<T, S>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DynStorage")
@@ -234,7 +234,7 @@ where
         }
         #[cfg(not(feature = "alloc"))]
         {
-            Self(super::RawOrBoxInner::Raw(super::Raw::new(data)))
+            Self(RawOrBoxInner::Raw(Raw::new(data)))
         }
     }
     fn ptr(&self) -> NonNull<()> {
@@ -282,23 +282,35 @@ where
 #[cfg(test)]
 #[allow(clippy::undocumented_unsafe_blocks)]
 mod tests {
-    use core::{marker::PhantomData, mem, mem::ManuallyDrop};
+    use core::{mem, mem::ManuallyDrop};
 
     use elain::{Align, Alignment};
 
     use crate::{
-        private::{DynVTable, StorageMoved},
+        private::{DynTrait, DynVTable, NewVTable, StorageMoved, StorageVTable},
         storage::DynStorage,
         Storage,
     };
 
-    type TestStorage<'a, S> = DynStorage<'a, S, DynVTable>;
-    impl<'a, S: Storage> TestStorage<'a, S> {
-        fn new_test<T: 'a>(data: T) -> Self {
-            Self {
-                inner: S::new(data),
-                vtable: &const { DynVTable::new::<S, T>() },
-                _lifetime: PhantomData,
+    type TestStorage<S> = DynStorage<dyn Test, S>;
+    trait Test {}
+    impl DynTrait for dyn Test {
+        type VTable = TestVTable;
+    }
+    struct TestVTable {
+        dyn_vtable: DynVTable,
+    }
+    impl StorageVTable for TestVTable {
+        fn dyn_vtable(&self) -> &DynVTable {
+            &self.dyn_vtable
+        }
+    }
+    unsafe impl<T> NewVTable<T> for dyn Test {
+        fn new_vtable<S: Storage>() -> &'static Self::VTable {
+            &const {
+                TestVTable {
+                    dyn_vtable: DynVTable::new::<T>(),
+                }
             }
         }
     }
@@ -309,7 +321,7 @@ mod tests {
         where
             Align<ALIGN>: Alignment,
         {
-            let storages = [(); 2].map(TestStorage::<super::Raw<0, ALIGN>>::new_test);
+            let storages = [(); 2].map(TestStorage::<super::Raw<0, ALIGN>>::new);
             for s in &storages {
                 assert!(s.inner.ptr().cast::<Align<ALIGN>>().is_aligned());
             }
@@ -331,7 +343,7 @@ mod tests {
     fn raw_or_box() {
         fn check_variant<const N: usize>(variant: impl Fn(&super::RawOrBox<8>) -> bool) {
             let array = core::array::from_fn::<u8, N, _>(|i| i as u8);
-            let storage = TestStorage::<super::RawOrBox<8>>::new_test(array);
+            let storage = TestStorage::<super::RawOrBox<8>>::new(array);
             assert!(variant(&storage.inner));
             assert_eq!(
                 unsafe { storage.inner.ptr().cast::<[u8; N]>().read() },
@@ -341,7 +353,7 @@ mod tests {
         check_variant::<4>(|s| matches!(s.0, super::RawOrBoxInner::Raw(_)));
         check_variant::<64>(|s| matches!(s.0, super::RawOrBoxInner::Box(_)));
 
-        let storage = TestStorage::<super::RawOrBox<8, 1>>::new_test(0u64);
+        let storage = TestStorage::<super::RawOrBox<8, 1>>::new(0u64);
         assert!(matches!(storage.inner.0, super::RawOrBoxInner::Box(_)));
     }
 
@@ -356,7 +368,7 @@ mod tests {
     fn storage_drop() {
         fn check_drop<S: Storage>() {
             let mut dropped = false;
-            let storage = TestStorage::<S>::new_test(SetDropped(&mut dropped));
+            let storage = TestStorage::<S>::new(SetDropped(&mut dropped));
             assert!(!*unsafe { storage.inner.ptr().cast::<SetDropped>().as_ref() }.0);
             drop(storage);
             assert!(dropped);
@@ -374,8 +386,7 @@ mod tests {
     fn storage_drop_moved() {
         fn check_drop_moved<S: Storage>() {
             let mut dropped = false;
-            let mut storage =
-                ManuallyDrop::new(TestStorage::<S>::new_test(SetDropped(&mut dropped)));
+            let mut storage = ManuallyDrop::new(TestStorage::<S>::new(SetDropped(&mut dropped)));
             let moved = unsafe { StorageMoved::<S, SetDropped>::new(&mut storage.inner) };
             unsafe { drop(moved.read()) };
             drop(moved);
@@ -393,7 +404,7 @@ mod tests {
     #[test]
     fn storage_dst() {
         fn check_dst<S: Storage>() {
-            drop(TestStorage::<S>::new_test(()));
+            drop(TestStorage::<S>::new(()));
         }
         check_dst::<super::Raw<{ size_of::<SetDropped>() }, { align_of::<SetDropped>() }>>();
         #[cfg(feature = "alloc")]

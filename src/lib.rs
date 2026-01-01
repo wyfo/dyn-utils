@@ -6,14 +6,16 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-use core::{alloc::Layout, ptr::NonNull};
+use core::{alloc::Layout, pin::Pin, ptr::NonNull};
 
 #[doc(hidden)]
 pub mod private;
 pub mod storage;
+mod vtables;
 
 pub use dyn_utils_macros::*;
 pub use elain::*;
+pub use storage::DynStorage;
 
 /// Default storage for methods' return.
 pub type DefaultStorage = storage::RawOrBox<{ 16 * size_of::<usize>() }>;
@@ -32,7 +34,10 @@ pub unsafe trait Storage: Sized + 'static {
         unsafe { self.ptr().cast().as_ref() }
     }
     unsafe fn as_mut<T>(&mut self) -> &mut T {
-        unsafe { self.ptr().cast().as_mut() }
+        unsafe { self.ptr_mut().cast().as_mut() }
+    }
+    unsafe fn as_pinned_mut<T>(self: Pin<&mut Self>) -> Pin<&mut T> {
+        unsafe { self.map_unchecked_mut(|this| this.as_mut()) }
     }
     /// # Safety
     ///
