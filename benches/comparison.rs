@@ -35,8 +35,7 @@ trait Trait3 {
     async fn future(&self, s: &str) -> usize;
 }
 
-struct Foo;
-impl Trait for Foo {
+impl Trait for () {
     async fn future(&self, s: &str) -> usize {
         s.len()
     }
@@ -45,7 +44,7 @@ impl Trait for Foo {
     }
 }
 
-impl Trait2 for Foo {
+impl Trait2 for () {
     async fn future(&self, s: &str) -> usize {
         s.len()
     }
@@ -55,7 +54,7 @@ impl Trait2 for Foo {
 }
 
 #[async_trait::async_trait]
-impl Trait3 for Foo {
+impl Trait3 for () {
     async fn future(&self, s: &str) -> usize {
         s.len()
     }
@@ -63,34 +62,34 @@ impl Trait3 for Foo {
 
 #[divan::bench]
 fn dyn_utils_async(b: Bencher) {
-    let foo = black_box(Box::new(Foo) as Box<dyn DynTrait>);
-    b.bench_local(|| now_or_never!(foo.future("test")));
+    let test = black_box(Box::new(()) as Box<dyn DynTrait>);
+    b.bench_local(|| now_or_never!(test.future("test")));
 }
 
 #[divan::bench]
 fn dyn_utils_iter(b: Bencher) {
-    let foo = black_box(Box::new(Foo) as Box<dyn DynTrait>);
-    b.bench_local(|| foo.iter().count());
+    let test = black_box(Box::new(()) as Box<dyn DynTrait>);
+    b.bench_local(|| test.iter().count());
 }
 
 #[divan::bench]
 fn dynify(b: Bencher) {
-    let foo = black_box(Box::new(Foo) as Box<dyn DynTrait2>);
+    let test = black_box(Box::new(()) as Box<dyn DynTrait2>);
     b.bench_local(|| {
         let mut stack = [MaybeUninit::<u8>::uninit(); 128];
         let mut heap = Vec::<MaybeUninit<u8>>::new();
-        let init = foo.future("test");
+        let init = test.future("test");
         now_or_never!(init.init2(&mut stack, &mut heap));
     });
 }
 
 #[divan::bench]
 fn dynify_iter(b: Bencher) {
-    let foo = black_box(Box::new(Foo) as Box<dyn DynTrait2>);
+    let test = black_box(Box::new(()) as Box<dyn DynTrait2>);
     b.bench_local(|| {
         let mut stack = [MaybeUninit::<u8>::uninit(); 128];
         let mut heap = Vec::<MaybeUninit<u8>>::new();
-        let init = foo.iter();
+        let init = test.iter();
         let mut iter = init.init2(&mut stack, &mut heap);
         (&mut *iter).count()
     });
@@ -98,8 +97,8 @@ fn dynify_iter(b: Bencher) {
 
 #[divan::bench]
 fn async_trait(b: Bencher) {
-    let foo = black_box(Box::new(Foo) as Box<dyn Trait3>);
-    b.bench_local(|| now_or_never!(foo.future("test")));
+    let test = black_box(Box::new(()) as Box<dyn Trait3>);
+    b.bench_local(|| now_or_never!(test.future("test")));
 }
 
 fn main() {

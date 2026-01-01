@@ -12,7 +12,7 @@ use core::{
 
 use elain::{Align, Alignment};
 
-use crate::{private, DefaultStorage, Storage};
+use crate::{DefaultStorage, Storage, private};
 
 pub struct DynStorage<T: private::DynTrait + ?Sized, S: Storage = DefaultStorage> {
     inner: S,
@@ -188,7 +188,7 @@ where
     Box(Box),
 }
 
-/// A [`Raw`] storage with [`Box`] backup if the object doesn't fit in.
+/// A [`Raw`] storage with `Box` backup if the object doesn't fit in.
 #[derive(Debug)]
 pub struct RawOrBox<const SIZE: usize, const ALIGN: usize = { align_of::<usize>() }>(
     RawOrBoxInner<SIZE, ALIGN>,
@@ -287,9 +287,9 @@ mod tests {
     use elain::{Align, Alignment};
 
     use crate::{
+        Storage,
         private::{DynTrait, DynVTable, NewVTable, StorageMoved, StorageVTable},
         storage::DynStorage,
-        Storage,
     };
 
     type TestStorage<S> = DynStorage<dyn Test, S>;

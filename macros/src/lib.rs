@@ -4,9 +4,9 @@ use std::collections::HashSet;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
-    parse_macro_input, parse_quote, visit_mut::VisitMut, CapturedParam, GenericParam, Generics, ItemImpl, ItemTrait,
-    Lifetime, LifetimeParam, Receiver, TraitItem, Type, TypeImplTrait
-    , TypeParamBound, TypeReference,
+    CapturedParam, GenericParam, Generics, ItemImpl, ItemTrait, Lifetime, LifetimeParam, Receiver,
+    TraitItem, Type, TypeImplTrait, TypeParamBound, TypeReference, parse_macro_input, parse_quote,
+    visit_mut::VisitMut,
 };
 
 use crate::{

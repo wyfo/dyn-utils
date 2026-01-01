@@ -1,15 +1,15 @@
 use std::borrow::Cow;
 
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use syn::{
-    parse_quote, visit_mut::VisitMut, FnArg, GenericParam, ImplItemFn, Path, Token, TraitItemFn,
-    TypeImplTrait, TypeParamBound, TypeTraitObject, Visibility,
+    FnArg, GenericParam, ImplItemFn, Path, Token, TraitItemFn, TypeImplTrait, TypeParamBound,
+    TypeTraitObject, Visibility, parse_quote, visit_mut::VisitMut,
 };
 
 use crate::{
+    CapturedLifetimes,
     macros::bail,
     utils::{is_future, return_type},
-    CapturedLifetimes,
 };
 
 pub(crate) fn is_dyn_compatible(method: &TraitItemFn) -> bool {

@@ -7,9 +7,9 @@ use core::{
 };
 
 use crate::{
+    Storage,
     private::{DynTrait, DynVTable, NewVTable, StorageVTable},
     storage::DynStorage,
-    Storage,
 };
 
 #[derive(Debug)]
