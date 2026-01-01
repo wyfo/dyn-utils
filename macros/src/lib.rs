@@ -10,7 +10,7 @@ use syn::{
 
 use crate::{
     macros::{bail, try_match},
-    methods::{impl_method, to_dyn_method, with_storage_method},
+    methods::{impl_method, is_dyn_compatible, to_dyn_method, with_storage_method},
     utils::return_type,
 };
 
@@ -35,17 +35,13 @@ fn with_storage_impl(r#trait: &ItemTrait) -> syn::Result<TokenStream> {
     for item in r#trait.items.iter() {
         match item {
             TraitItem::Macro(_) => bail!(item, "macro invocations are not supported"),
-            TraitItem::Const(_) => {}
             TraitItem::Type(ty) => {
                 let (impl_generics, ty_generics, where_clause) = ty.generics.split_for_impl();
                 let ty_name = &ty.ident;
                 impl_items.push(p!(type #ty_name #impl_generics = <__Dyn as #trait_name>::#ty_name #ty_generics #where_clause;));
                 with_storage_items.push(item.clone());
             }
-            TraitItem::Fn(method)
-                if (method.sig.generics.params.iter())
-                    .any(|p| !matches!(p, GenericParam::Lifetime(_))) => {}
-            TraitItem::Fn(method) => {
+            TraitItem::Fn(method) if is_dyn_compatible(method) => {
                 let method = to_dyn_method(method);
                 if let Some(ret) = return_type(&method).and_then(try_match!(Type::ImplTrait)) {
                     let with_storage = with_storage_method(&method, ret);

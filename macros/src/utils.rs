@@ -1,26 +1,16 @@
 use std::borrow::Cow;
 
-use proc_macro2::Ident;
-use quote::format_ident;
 use syn::{
-    parse_quote, AssocType, Expr, FnArg, GenericArgument, GenericParam, PathArguments, ReturnType,
+    parse_quote, Expr, FnArg, GenericParam, ReturnType,
     TraitItemFn, Type, TypeImplTrait, TypeParamBound,
 };
 
 use crate::macros::try_match;
 
-pub(crate) fn with_storage_suffix(method: &TraitItemFn) -> Ident {
-    format_ident!("{}_with_storage", method.sig.ident)
-}
-
-pub(crate) fn future_output(ty: &TypeImplTrait) -> Option<&AssocType> {
-    let future = (ty.bounds.iter())
+pub(crate) fn is_future(ty: &TypeImplTrait) -> bool {
+    (ty.bounds.iter())
         .filter_map(try_match!(TypeParamBound::Trait))
-        .find_map(|bound| bound.path.segments.last().filter(|s| s.ident == "Future"))?;
-    let args = try_match!(&future.arguments, PathArguments::AngleBracketed)?;
-    (args.args.iter())
-        .filter_map(try_match!(GenericArgument::AssocType))
-        .find(|t| t.ident == "Output")
+        .any(|bound| bound.path.segments.last().unwrap().ident == "Future")
 }
 
 pub(crate) fn return_type(method: &TraitItemFn) -> Option<&Type> {
