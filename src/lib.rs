@@ -58,17 +58,52 @@ pub enum TrySync<F: Future> {
     SyncPolled,
 }
 
-#[cfg_attr(coverage_nightly, coverage(off))]
+impl<F: Future> TrySync<F> {
+    #[cfg_attr(coverage_nightly, coverage(off))] // Because of `unreachable_unchecked` branch
+    #[inline(always)]
+    unsafe fn take_sync(&mut self) -> F::Output {
+        match mem::replace(self, TrySync::SyncPolled) {
+            TrySync::Sync(res) => res,
+            _ => unsafe { hint::unreachable_unchecked() },
+        }
+    }
+}
+
 impl<F: Future> Future for TrySync<F> {
     type Output = F::Output;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match unsafe { self.get_unchecked_mut() } {
-            res @ TrySync::Sync(_) => match mem::replace(res, TrySync::SyncPolled) {
-                TrySync::Sync(res) => Poll::Ready(res),
-                _ => unsafe { hint::unreachable_unchecked() },
-            },
+            res @ TrySync::Sync(_) => Poll::Ready(unsafe { res.take_sync() }),
             TrySync::Async(fut) => unsafe { Pin::new_unchecked(fut) }.poll(cx),
             _ => panic!("future polled after completion"),
         }
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))] // Because of `unreachable_unchecked` branch
+#[cfg(test)]
+mod tests {
+    use core::{
+        future::{Ready, ready},
+        pin::pin,
+    };
+
+    use futures::FutureExt;
+
+    use crate::TrySync;
+
+    #[test]
+    fn try_sync() {
+        for try_sync in [TrySync::Sync(42), TrySync::Async(ready(42))] {
+            assert_eq!(try_sync.now_or_never(), Some(42));
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "future polled after completion")]
+    fn try_sync_polled_after_completion() {
+        let mut try_sync = pin!(TrySync::<Ready<i32>>::Sync(42));
+        assert_eq!(try_sync.as_mut().now_or_never(), Some(42));
+        try_sync.now_or_never();
     }
 }

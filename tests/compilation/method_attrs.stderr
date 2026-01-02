@@ -22,8 +22,47 @@ error: attribute must be used on a method with Return Position Impl Trait
 21 |     #[dyn_utils(try_sync)]
    |                 ^^^^^^^^
 
-error: unknown attribute
-  --> tests/compilation/method_attrs.rs:27:17
+error: `try_sync` must be used on async methods
+  --> tests/compilation/method_attrs.rs:25:1
    |
-27 |     #[dyn_utils(unknown)]
+25 | #[dyn_utils::dyn_compatible]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the attribute macro `dyn_utils::dyn_compatible` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: `try_sync` must be used on async methods
+  --> tests/compilation/method_attrs.rs:31:1
+   |
+31 | #[dyn_utils::dyn_compatible]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the attribute macro `dyn_utils::dyn_compatible` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: `try_sync` must be used on async methods
+  --> tests/compilation/method_attrs.rs:37:1
+   |
+37 | #[dyn_utils::dyn_compatible]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the attribute macro `dyn_utils::dyn_compatible` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: unknown attribute
+  --> tests/compilation/method_attrs.rs:45:17
+   |
+45 |     #[dyn_utils(unknown)]
    |                 ^^^^^^^
+
+error: `dyn_utils::sync` must be used on async method
+  --> tests/compilation/method_attrs.rs:55:5
+   |
+55 |     fn method(&self) {}
+   |     ^^^^^^^^^^^^^^^^
+
+error[E0046]: not all trait items implemented, missing: `method`
+  --> tests/compilation/method_attrs.rs:53:1
+   |
+50 |     fn method(&self);
+   |     ----------------- `method` from trait
+...
+53 | impl Trait for () {
+   | ^^^^^^^^^^^^^^^^^ missing `method` in implementation

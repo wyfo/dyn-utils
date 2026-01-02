@@ -20,8 +20,13 @@ macro_rules! now_or_never {
 
 #[dyn_utils::dyn_compatible]
 trait Trait {
-    async fn future(&self, s: &str) -> usize;
-    fn iter(&self) -> impl Iterator<Item = usize>;
+    #[dyn_utils(try_sync)]
+    async fn future(&self, s: &str) -> usize {
+        s.len()
+    }
+    fn iter(&self) -> impl Iterator<Item = usize> {
+        [1, 2, 3, 4].into_iter()
+    }
 }
 
 #[dynify::dynify]
@@ -35,12 +40,13 @@ trait Trait3 {
     async fn future(&self, s: &str) -> usize;
 }
 
-impl Trait for () {
+impl Trait for () {}
+
+struct Sync;
+impl Trait for Sync {
+    #[dyn_utils::sync]
     async fn future(&self, s: &str) -> usize {
         s.len()
-    }
-    fn iter(&self) -> impl Iterator<Item = usize> {
-        [1, 2, 3, 4].into_iter()
     }
 }
 
@@ -64,6 +70,18 @@ impl Trait3 for () {
 fn dyn_utils_async(b: Bencher) {
     let test = black_box(Box::new(()) as Box<dyn DynTrait>);
     b.bench_local(|| now_or_never!(test.future("test")));
+}
+
+#[divan::bench]
+fn dyn_utils_try_sync(b: Bencher) {
+    let test = black_box(Box::new(Sync) as Box<dyn DynTrait>);
+    b.bench_local(|| now_or_never!(test.future_try_sync("test")));
+}
+
+#[divan::bench]
+fn dyn_utils_try_sync_fallback(b: Bencher) {
+    let test = black_box(Box::new(()) as Box<dyn DynTrait>);
+    b.bench_local(|| now_or_never!(test.future_try_sync("test")));
 }
 
 #[divan::bench]

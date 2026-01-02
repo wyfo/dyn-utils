@@ -1,15 +1,16 @@
 use std::borrow::Cow;
 
 use proc_macro2::{Ident, TokenStream};
-use quote::{ToTokens, quote};
+use quote::{ToTokens, format_ident, quote};
 use syn::{
-    FnArg, GenericParam, ImplItemFn, Path, Token, TraitItemFn, TypeImplTrait, TypeParamBound,
-    TypeTraitObject, Visibility, parse_quote, visit_mut::VisitMut,
+    FnArg, GenericParam, ImplItemFn, Path, ReturnType, Signature, Token, TraitItemFn,
+    TypeImplTrait, TypeParamBound, TypeTraitObject, Visibility, parse_quote,
+    punctuated::Punctuated, visit_mut::VisitMut,
 };
 
 use crate::{
-    macros::bail,
-    utils::{CapturedLifetimes, return_type},
+    macros::{bail, try_match},
+    utils::{CapturedLifetimes, future_output, return_type},
 };
 
 pub(crate) fn is_dyn_compatible(method: &TraitItemFn) -> bool {
@@ -46,6 +47,10 @@ impl MethodAttrs {
             bail!(attr, err);
         }
         Ok(())
+    }
+
+    pub(crate) fn try_sync(&self) -> bool {
+        self.try_sync.is_some()
     }
 
     pub(crate) fn storage(&self) -> TokenStream {
@@ -101,21 +106,102 @@ pub(crate) fn dyn_method(
     method
 }
 
-pub(crate) fn impl_method(method: &TraitItemFn, dyn_method: Option<&TraitItemFn>) -> ImplItemFn {
-    let method_name = &method.sig.ident;
-    let args = method.sig.inputs.iter().map(|arg| match arg {
+fn forward_call(method: &Ident, args: &Punctuated<FnArg, Token![,]>) -> TokenStream {
+    let args = args.iter().map(|arg| match arg {
         FnArg::Receiver(_) => Cow::Owned(parse_quote!(self)),
         FnArg::Typed(arg) => Cow::Borrowed(&arg.pat),
     });
-    let forward = quote!(__Dyn::#method_name(#(#args,)*));
+    quote!(__Dyn::#method(#(#args,)*))
+}
+
+pub(crate) fn impl_method(method: &TraitItemFn, dyn_method: Option<&TraitItemFn>) -> ImplItemFn {
+    let call = forward_call(&method.sig.ident, &method.sig.inputs);
     ImplItemFn {
         attrs: vec![],
         vis: Visibility::Inherited,
         defaultness: None,
         sig: dyn_method.unwrap_or(method).sig.clone(),
         block: match dyn_method {
-            Some(_) => parse_quote!({ ::dyn_utils::DynStorage::new(#forward) }),
-            None => parse_quote!({ #forward }),
+            Some(_) => parse_quote!({ ::dyn_utils::DynStorage::new(#call) }),
+            None => parse_quote!({ #call }),
         },
+    }
+}
+
+pub(crate) fn sync_method(method: &TraitItemFn, ret: &TypeImplTrait) -> syn::Result<TraitItemFn> {
+    let Some(output) = future_output(ret) else {
+        bail!(method, "`try_sync` must be used on async methods");
+    };
+    let mut sync_method = method.clone();
+    sync_method.attrs.push(parse_quote!(#[doc(hidden)]));
+    sync_method
+        .attrs
+        .push(parse_quote!(#[allow(unused_variables)]));
+    sync_method.sig.output = parse_quote!(-> #output);
+    let method_name = &method.sig.ident;
+    sync_method.sig.ident = format_ident!("{method_name}_sync");
+    sync_method.default = Some(parse_quote!({ ::core::unimplemented!() }));
+    Ok(sync_method)
+}
+
+pub(crate) fn is_sync_constant(signature: &Signature, value: bool) -> TokenStream {
+    let is_sync = format_ident!("{}_IS_SYNC", signature.ident.to_string().to_uppercase());
+    quote!(const #is_sync: bool = #value;)
+}
+
+fn try_sync_signature(signature: &Signature) -> Signature {
+    let mut signature = signature.clone();
+    let ident = &signature.ident;
+    signature.ident = format_ident!("{ident}_try_sync");
+    let output = try_match!(&signature.output, ReturnType::Type(_, ty) => ty.as_ref()).unwrap();
+    signature.output = parse_quote!(-> ::dyn_utils::TrySync<#output>);
+    signature
+}
+
+pub(crate) fn try_sync_dyn_method(dyn_method: &TraitItemFn) -> TraitItemFn {
+    let mut method = dyn_method.clone();
+    method.sig = try_sync_signature(&method.sig);
+    method
+}
+
+pub(crate) fn try_sync_impl_method(impl_method: &ImplItemFn) -> ImplItemFn {
+    let method_name = &impl_method.sig.ident;
+    let mut method = impl_method.clone();
+    method.sig = try_sync_signature(&method.sig);
+    let is_sync = format_ident!("{}_IS_SYNC", method_name.to_string().to_uppercase());
+    let sync_call = forward_call(&format_ident!("{}_sync", method_name), &method.sig.inputs);
+    let async_call = forward_call(method_name, &method.sig.inputs);
+    method.block = parse_quote!({
+       if __Dyn::#is_sync {
+            ::dyn_utils::TrySync::Sync(#sync_call)
+        } else {
+            ::dyn_utils::TrySync::Async(::dyn_utils::DynStorage::new(#async_call))
+        }
+    });
+    method
+}
+
+// for coverage
+#[cfg(test)]
+mod tests {
+    use syn::{TraitItemFn, parse_quote};
+
+    use crate::methods::try_sync_signature;
+
+    #[test]
+    fn try_sync_signature_ok() {
+        let func: TraitItemFn = parse_quote! {
+            fn method(&self) -> ::dyn_utils::DynStorage<dyn Future<Output=()>, __StorageMethod>;
+        };
+        try_sync_signature(&func.sig);
+    }
+
+    #[test]
+    #[should_panic]
+    fn try_sync_signature_unreachable() {
+        let func: TraitItemFn = parse_quote! {
+            fn method(&self);
+        };
+        try_sync_signature(&func.sig);
     }
 }

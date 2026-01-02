@@ -5,11 +5,11 @@ macro_rules! try_match {
             _ => None
         }
     };
-    ($pattern:pat $(if $guard:expr)? => $result:expr) => {
-        |__arg| crate::macros::try_match!(__arg, $pattern $(if $guard)? => $result)
-    };
     ($expression:expr, $($variant:tt)*) => {
         crate::macros::try_match!($expression, $($variant)*(__variant) => __variant)
+    };
+    ($pattern:pat $(if $guard:expr)? => $result:expr) => {
+        |__arg| crate::macros::try_match!(__arg, $pattern $(if $guard)? => $result)
     };
     ($($variant:tt)*) => {
         |__arg| crate::macros::try_match!(__arg, $($variant)*(__variant) => __variant)

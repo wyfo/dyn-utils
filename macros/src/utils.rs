@@ -1,15 +1,26 @@
 use std::collections::HashSet;
 
 use syn::{
-    CapturedParam, GenericParam, Generics, Lifetime, LifetimeParam, Receiver, ReturnType,
-    TraitItemFn, Type, TypeImplTrait, TypeParamBound, TypeReference, parse_quote,
-    visit_mut::VisitMut,
+    CapturedParam, GenericArgument, GenericParam, Generics, Lifetime, LifetimeParam, PathArguments,
+    Receiver, ReturnType, TraitItemFn, Type, TypeImplTrait, TypeParamBound, TypeReference,
+    parse_quote, visit_mut::VisitMut,
 };
 
 use crate::macros::try_match;
 
 pub(crate) fn return_type(method: &TraitItemFn) -> Option<&Type> {
     try_match!(&method.sig.output, ReturnType::Type(_, ty) => ty.as_ref())
+}
+
+pub(crate) fn future_output(ret: &TypeImplTrait) -> Option<&Type> {
+    let future = (ret.bounds.iter())
+        .filter_map(try_match!(TypeParamBound::Trait))
+        .find_map(|bound| bound.path.segments.last().filter(|s| s.ident == "Future"))?;
+    let args = try_match!(&future.arguments, PathArguments::AngleBracketed)?;
+    let output = (args.args.iter())
+        .filter_map(try_match!(GenericArgument::AssocType))
+        .find(|t| t.ident == "Output")?;
+    Some(&output.ty)
 }
 
 pub struct CapturedLifetimes {
