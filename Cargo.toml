@@ -11,7 +11,7 @@ default = ["alloc"]
 alloc = []
 
 [dependencies]
-elain = "0.3.0"
+elain = "0.3"
 dyn-utils-macros = { path = "macros" }
 
 [dev-dependencies]
@@ -19,6 +19,7 @@ async-trait = "0.1.89"
 divan = "0.1"
 dynify = "0.1.2"
 futures = "0.3.31"
+trybuild = "1.0.114"
 
 [lib]
 bench = false

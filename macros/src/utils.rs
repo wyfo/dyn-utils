@@ -1,14 +1,66 @@
-use syn::{ReturnType, TraitItemFn, Type, TypeImplTrait, TypeParamBound};
+use std::collections::HashSet;
+
+use syn::{
+    CapturedParam, GenericParam, Generics, Lifetime, LifetimeParam, Receiver, ReturnType,
+    TraitItemFn, Type, TypeImplTrait, TypeParamBound, TypeReference, parse_quote,
+    visit_mut::VisitMut,
+};
 
 use crate::macros::try_match;
 
-#[cfg_attr(coverage_nightly, coverage(off))]
-pub(crate) fn is_future(ty: &TypeImplTrait) -> bool {
-    (ty.bounds.iter())
-        .filter_map(try_match!(TypeParamBound::Trait))
-        .any(|bound| bound.path.segments.last().unwrap().ident == "Future")
-}
-
 pub(crate) fn return_type(method: &TraitItemFn) -> Option<&Type> {
     try_match!(&method.sig.output, ReturnType::Type(_, ty) => ty.as_ref())
+}
+
+pub struct CapturedLifetimes {
+    dyn_lt: Lifetime,
+    default_lt: Lifetime,
+    captured: HashSet<Lifetime>,
+}
+
+impl CapturedLifetimes {
+    pub(crate) fn new(ret: &TypeImplTrait, generics: &Generics) -> Self {
+        Self {
+            dyn_lt: parse_quote!('__dyn),
+            default_lt: parse_quote!('_),
+            captured: match (ret.bounds.iter()).find_map(try_match!(TypeParamBound::PreciseCapture))
+            {
+                Some(c) => (c.params.iter())
+                    .filter_map(try_match!(CapturedParam::Lifetime(l) => l.clone()))
+                    .collect(),
+                None => (generics.params.iter())
+                    .filter_map(try_match!(GenericParam::Lifetime(l) => l.lifetime.clone()))
+                    .chain([parse_quote!('_)])
+                    .collect(),
+            },
+        }
+    }
+}
+
+impl VisitMut for CapturedLifetimes {
+    fn visit_lifetime_mut(&mut self, i: &mut Lifetime) {
+        if *i == self.default_lt && self.captured.contains(i) {
+            *i = self.dyn_lt.clone();
+        }
+    }
+
+    fn visit_lifetime_param_mut(&mut self, i: &mut LifetimeParam) {
+        if self.captured.contains(&i.lifetime) {
+            i.bounds.push(self.dyn_lt.clone());
+        }
+    }
+
+    fn visit_receiver_mut(&mut self, i: &mut Receiver) {
+        if let Some((_, lt @ None)) = &mut i.reference {
+            *lt = Some(self.default_lt.clone());
+        }
+        syn::visit_mut::visit_receiver_mut(self, i);
+    }
+
+    fn visit_type_reference_mut(&mut self, i: &mut TypeReference) {
+        if i.lifetime.is_none() {
+            i.lifetime = Some(self.default_lt.clone());
+        }
+        syn::visit_mut::visit_type_reference_mut(self, i);
+    }
 }

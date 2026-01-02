@@ -1,0 +1,29 @@
+error: attribute must be used on a method with Return Position Impl Trait
+ --> tests/compilation/method_attrs.rs:3:17
+  |
+3 |     #[dyn_utils(storage = dyn_utils::DefaultStorage)]
+  |                 ^^^^^^^
+
+error: expected `=`
+ --> tests/compilation/method_attrs.rs:9:24
+  |
+9 |     #[dyn_utils(storage(dyn_utils::DefaultStorage))]
+  |                        ^
+
+error: expected identifier
+  --> tests/compilation/method_attrs.rs:15:27
+   |
+15 |     #[dyn_utils(storage = ..)]
+   |                           ^
+
+error: attribute must be used on a method with Return Position Impl Trait
+  --> tests/compilation/method_attrs.rs:21:17
+   |
+21 |     #[dyn_utils(try_sync)]
+   |                 ^^^^^^^^
+
+error: unknown attribute
+  --> tests/compilation/method_attrs.rs:27:17
+   |
+27 |     #[dyn_utils(unknown)]
+   |                 ^^^^^^^

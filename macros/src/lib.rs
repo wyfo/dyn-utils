@@ -1,17 +1,18 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
-use std::collections::HashSet;
 
+use heck::ToPascalCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
-    CapturedParam, GenericParam, Generics, ItemImpl, ItemTrait, Lifetime, LifetimeParam, Receiver,
-    TraitItem, Type, TypeImplTrait, TypeParamBound, TypeReference, parse_macro_input, parse_quote,
-    visit_mut::VisitMut,
+    GenericParam, ImplItem, ItemTrait, TraitItem, TraitItemFn, Type, parse_macro_input,
+    parse_quote, parse_quote_spanned, spanned::Spanned,
 };
 
 use crate::{
     macros::try_match,
-    methods::{dyn_method, impl_method, is_dyn_compatible, to_dyn_method},
+    methods::{
+        dyn_method, handle_async_method, impl_method, is_dyn_compatible, parse_method_attrs,
+    },
     utils::return_type,
 };
 
@@ -19,129 +20,71 @@ mod macros;
 mod methods;
 mod utils;
 
-#[cfg_attr(coverage_nightly, coverage(off))]
 #[proc_macro_attribute]
 pub fn dyn_compatible(
     _attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    dyn_compatible_impl(&parse_macro_input!(item as ItemTrait))
+    dyn_compatible_impl(parse_macro_input!(item as ItemTrait))
         .unwrap_or_else(|err| err.to_compile_error())
         .into()
 }
 
-fn dyn_compatible_impl(r#trait: &ItemTrait) -> syn::Result<TokenStream> {
+fn dyn_compatible_impl(mut r#trait: ItemTrait) -> syn::Result<TokenStream> {
     let trait_name = &r#trait.ident;
-    let mut with_storage_items = Vec::new();
-    let mut impl_items = Vec::new();
-    for item in r#trait.items.iter() {
+    let mut dyn_items = Vec::new();
+    let mut storages = Vec::<GenericParam>::new();
+    let mut impl_items = Vec::<ImplItem>::new();
+    for item in r#trait.items.iter_mut() {
         match item {
             TraitItem::Type(ty) => {
                 let (impl_generics, ty_generics, where_clause) = ty.generics.split_for_impl();
                 let ty_name = &ty.ident;
                 impl_items.push(parse_quote!(type #ty_name #impl_generics = <__Dyn as #trait_name>::#ty_name #ty_generics #where_clause;));
-                with_storage_items.push(item.clone());
+                dyn_items.push(item.clone());
             }
             TraitItem::Fn(method) if is_dyn_compatible(method) => {
-                let method = to_dyn_method(method);
+                let attrs = parse_method_attrs(method)?;
+                let mut method = TraitItemFn {
+                    attrs: method.attrs.clone(),
+                    sig: method.sig.clone(),
+                    default: None,
+                    semi_token: None,
+                };
+                handle_async_method(&mut method);
                 if let Some(ret) = return_type(&method).and_then(try_match!(Type::ImplTrait)) {
-                    let with_storage = dyn_method(&method, ret);
-                    impl_items.push(impl_method(&method, Some(&with_storage)).into());
-                    with_storage_items.push(with_storage.into());
+                    let storage =
+                        format_ident!("__Storage{}", method.sig.ident.to_string().to_pascal_case());
+                    let default_storage = attrs.storage();
+                    storages.push(parse_quote_spanned!(default_storage.span() => #storage: ::dyn_utils::Storage = #default_storage));
+                    let dyn_method = dyn_method(&method, ret, &storage);
+                    impl_items.push(impl_method(&method, Some(&dyn_method)).into());
+                    dyn_items.push(dyn_method.into());
                 } else {
+                    attrs.check_no_attr()?;
                     impl_items.push(impl_method(&method, None).into());
-                    with_storage_items.push(method.into());
+                    dyn_items.push(method.into());
                 }
             }
             _ => {}
         }
     }
-    let dyn_trait = ItemTrait {
-        attrs: vec![],
-        vis: r#trait.vis.clone(),
-        unsafety: r#trait.unsafety,
-        auto_token: r#trait.auto_token,
-        restriction: r#trait.restriction.clone(),
-        trait_token: r#trait.trait_token,
-        ident: format_ident!("Dyn{}", r#trait.ident),
-        generics: r#trait.generics.clone(),
-        colon_token: r#trait.colon_token,
-        supertraits: r#trait.supertraits.clone(),
-        brace_token: r#trait.brace_token,
-        items: with_storage_items,
-    };
-    let (_, ty_generics, _) = r#trait.generics.split_for_impl();
-    let mut impl_generics = r#trait.generics.clone();
+    let dyn_trait = format_ident!("Dyn{}", r#trait.ident);
+    let unsafety = &r#trait.unsafety;
+    let vis = &r#trait.vis;
+    let supertraits = &r#trait.supertraits;
+    let (_, trait_generics_ty, where_clause) = r#trait.generics.split_for_impl();
+    let mut dyn_generics = r#trait.generics.clone();
+    dyn_generics.params.extend(storages);
+    let (_, dyn_generics_ty, _) = dyn_generics.split_for_impl();
+    let mut impl_generics = dyn_generics.clone();
     impl_generics
         .params
-        .push(parse_quote!(__Dyn: #trait_name #ty_generics));
-    let impl_with_storage = ItemImpl {
-        attrs: vec![],
-        defaultness: None,
-        unsafety: r#trait.unsafety,
-        impl_token: Default::default(),
-        generics: impl_generics,
-        trait_: Some((None, dyn_trait.ident.clone().into(), parse_quote!(for))),
-        self_ty: parse_quote!(__Dyn),
-        brace_token: Default::default(),
-        items: impl_items,
-    };
+        .push(parse_quote!(__Dyn: #trait_name #trait_generics_ty));
+    let (impl_generics, _, _) = impl_generics.split_for_impl();
     Ok(quote! {
         #r#trait
-        #dyn_trait
-        #impl_with_storage
+        #vis #unsafety trait #dyn_trait #dyn_generics #supertraits #where_clause { #(#dyn_items)* }
+        #unsafety impl #impl_generics #dyn_trait #dyn_generics_ty for __Dyn #where_clause { #(#impl_items)* }
     })
-}
-
-struct CapturedLifetimes {
-    dyn_lt: Lifetime,
-    default_lt: Lifetime,
-    captured: HashSet<Lifetime>,
-}
-
-impl CapturedLifetimes {
-    fn new(ret: &TypeImplTrait, generics: &Generics) -> Self {
-        Self {
-            dyn_lt: parse_quote!('__dyn),
-            default_lt: parse_quote!('_),
-            captured: match (ret.bounds.iter()).find_map(try_match!(TypeParamBound::PreciseCapture))
-            {
-                Some(c) => (c.params.iter())
-                    .filter_map(try_match!(CapturedParam::Lifetime(l) => l.clone()))
-                    .collect(),
-                None => (generics.params.iter())
-                    .filter_map(try_match!(GenericParam::Lifetime(l) => l.lifetime.clone()))
-                    .chain([parse_quote!('_)])
-                    .collect(),
-            },
-        }
-    }
-}
-
-impl VisitMut for CapturedLifetimes {
-    fn visit_lifetime_mut(&mut self, i: &mut Lifetime) {
-        if *i == self.default_lt && self.captured.contains(i) {
-            *i = self.dyn_lt.clone();
-        }
-    }
-
-    fn visit_lifetime_param_mut(&mut self, i: &mut LifetimeParam) {
-        if self.captured.contains(&i.lifetime) {
-            i.bounds.push(self.dyn_lt.clone());
-        }
-    }
-
-    fn visit_receiver_mut(&mut self, i: &mut Receiver) {
-        if let Some((_, lt @ None)) = &mut i.reference {
-            *lt = Some(self.default_lt.clone());
-        }
-        syn::visit_mut::visit_receiver_mut(self, i);
-    }
-
-    fn visit_type_reference_mut(&mut self, i: &mut TypeReference) {
-        if i.lifetime.is_none() {
-            i.lifetime = Some(self.default_lt.clone());
-        }
-        syn::visit_mut::visit_type_reference_mut(self, i);
-    }
 }

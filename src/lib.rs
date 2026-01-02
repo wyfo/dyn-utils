@@ -1,12 +1,17 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![no_std]
-// #![forbid(missing_docs)]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-use core::{alloc::Layout, pin::Pin, ptr::NonNull};
+use core::{
+    alloc::Layout,
+    hint, mem,
+    pin::Pin,
+    ptr::NonNull,
+    task::{Context, Poll},
+};
 
 #[doc(hidden)]
 pub mod private;
@@ -45,4 +50,25 @@ pub unsafe trait Storage: Sized + 'static {
     /// after. `layout` must be the layout of the `data` passed in `Self::new`
     /// (or in other constructor like `new_box`, etc.)
     unsafe fn drop_in_place(&mut self, layout: Layout);
+}
+
+pub enum TrySync<F: Future> {
+    Sync(F::Output),
+    Async(F),
+    SyncPolled,
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl<F: Future> Future for TrySync<F> {
+    type Output = F::Output;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match unsafe { self.get_unchecked_mut() } {
+            res @ TrySync::Sync(_) => match mem::replace(res, TrySync::SyncPolled) {
+                TrySync::Sync(res) => Poll::Ready(res),
+                _ => unsafe { hint::unreachable_unchecked() },
+            },
+            TrySync::Async(fut) => unsafe { Pin::new_unchecked(fut) }.poll(cx),
+            _ => panic!("future polled after completion"),
+        }
+    }
 }

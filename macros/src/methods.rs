@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use proc_macro2::{Ident, TokenStream};
 use quote::{ToTokens, quote};
 use syn::{
     FnArg, GenericParam, ImplItemFn, Path, Token, TraitItemFn, TypeImplTrait, TypeParamBound,
@@ -7,9 +8,8 @@ use syn::{
 };
 
 use crate::{
-    CapturedLifetimes,
     macros::bail,
-    utils::{is_future, return_type},
+    utils::{CapturedLifetimes, return_type},
 };
 
 pub(crate) fn is_dyn_compatible(method: &TraitItemFn) -> bool {
@@ -22,44 +22,51 @@ pub(crate) fn is_dyn_compatible(method: &TraitItemFn) -> bool {
     has_receiver && has_no_generic_parameter_except_lifetime
 }
 
-#[derive(Default)]
-pub(crate) struct MethodAttrs {
-    try_sync: bool,
-    storage: Option<Path>,
-}
-
-pub(crate) fn to_dyn_method(method: &TraitItemFn) -> TraitItemFn {
-    let mut method = TraitItemFn {
-        attrs: method.attrs.clone(),
-        sig: method.sig.clone(),
-        default: None,
-        semi_token: None,
-    };
+pub(crate) fn handle_async_method(method: &mut TraitItemFn) {
     if method.sig.asyncness.is_some() {
         method.sig.asyncness = None;
-        let output = return_type(&method).map_or_else(|| quote!(()), ToTokens::to_token_stream);
+        let output = return_type(method).map_or_else(|| quote!(()), ToTokens::to_token_stream);
         method.sig.output = parse_quote!(-> impl Future<Output = #output>);
     }
-    method
 }
 
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[expect(dead_code)]
-pub(crate) fn parse_method_attr(
-    method: &mut TraitItemFn,
-    ret: &TypeImplTrait,
-) -> syn::Result<MethodAttrs> {
+#[derive(Default)]
+pub(crate) struct MethodAttrs {
+    try_sync: Option<Path>,
+    storage: Option<(Path, Path)>,
+}
+
+impl MethodAttrs {
+    pub fn check_no_attr(&self) -> syn::Result<()> {
+        let err = "attribute must be used on a method with Return Position Impl Trait";
+        if let Some(attr) = &self.try_sync {
+            bail!(attr, err);
+        }
+        if let Some((attr, _)) = &self.storage {
+            bail!(attr, err);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn storage(&self) -> TokenStream {
+        match &self.storage {
+            Some((_, storage)) => quote!(#storage),
+            None => quote!(::dyn_utils::DefaultStorage),
+        }
+    }
+}
+
+pub(crate) fn parse_method_attrs(method: &mut TraitItemFn) -> syn::Result<MethodAttrs> {
     let mut attrs = MethodAttrs::default();
     for attr in (method.attrs).extract_if(.., |attr| attr.path().is_ident("dyn_utils")) {
         attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("try_sync") {
-                if !is_future(ret) {
-                    bail!(meta.path, "`try_sync` must be used on async function");
-                }
-                attrs.try_sync = true;
-            }
-            if meta.path.is_ident("storage") {
-                attrs.storage = Some(meta.input.parse()?);
+                attrs.try_sync = Some(meta.path.clone());
+            } else if meta.path.is_ident("storage") {
+                meta.input.parse::<Token![=]>()?;
+                attrs.storage = Some((meta.path, meta.input.parse()?));
+            } else {
+                bail!(meta.path, "unknown attribute");
             }
             Ok(())
         })?;
@@ -67,21 +74,11 @@ pub(crate) fn parse_method_attr(
     Ok(attrs)
 }
 
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[expect(dead_code)]
-pub(crate) fn check_no_method_attr(method: &TraitItemFn) -> syn::Result<()> {
-    for attr in method.attrs.iter() {
-        if attr.path().is_ident("dyn_utils") {
-            bail!(
-                attr,
-                "`dyn_utils` attribute must be used on a method with Return Position Impl Trait"
-            );
-        }
-    }
-    Ok(())
-}
-
-pub(crate) fn dyn_method(method: &TraitItemFn, ret: &TypeImplTrait) -> TraitItemFn {
+pub(crate) fn dyn_method(
+    method: &TraitItemFn,
+    ret: &TypeImplTrait,
+    storage: &Ident,
+) -> TraitItemFn {
     let mut captured = CapturedLifetimes::new(ret, &method.sig.generics);
     let dyn_ret = TypeTraitObject {
         dyn_token: Some(Token![dyn](ret.impl_token.span)),
@@ -100,7 +97,7 @@ pub(crate) fn dyn_method(method: &TraitItemFn, ret: &TypeImplTrait) -> TraitItem
         .for_each(|param| captured.visit_generic_param_mut(param));
     method.sig.generics.params.push(parse_quote!('__dyn));
     (method.sig.inputs.iter_mut()).for_each(|arg| captured.visit_fn_arg_mut(arg));
-    method.sig.output = parse_quote!(-> ::dyn_utils::storage::DynStorage<#dyn_ret>);
+    method.sig.output = parse_quote!(-> ::dyn_utils::storage::DynStorage<#dyn_ret, #storage>);
     method
 }
 
