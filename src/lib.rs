@@ -24,27 +24,27 @@ pub use elain::*;
 /// Default storage for return-position `impl Trait`.
 pub type DefaultStorage = storage::RawOrBox<{ 16 * size_of::<usize>() }>;
 
-pub struct DynStorage<T: private::DynTrait + ?Sized, S: Storage = DefaultStorage> {
+pub struct DynStorage<Dyn: private::DynTrait + ?Sized, S: Storage = DefaultStorage> {
     inner: S,
-    vtable: &'static T::VTable,
+    vtable: &'static Dyn::VTable,
 }
 
-unsafe impl<S: Storage, T: private::DynTrait + ?Sized> Send for DynStorage<T, S> {}
+unsafe impl<Dyn: private::DynTrait + ?Sized, S: Storage> Send for DynStorage<Dyn, S> {}
 
-unsafe impl<S: Storage, T: private::DynTrait + ?Sized> Sync for DynStorage<T, S> {}
+unsafe impl<Dyn: private::DynTrait + ?Sized, S: Storage> Sync for DynStorage<Dyn, S> {}
 
-impl<S: Storage, T: private::DynTrait + ?Sized> DynStorage<T, S> {
-    pub fn new<Data>(data: Data) -> Self
+impl<S: Storage, Dyn: private::DynTrait + ?Sized> DynStorage<Dyn, S> {
+    pub fn new<T>(data: T) -> Self
     where
-        T: private::NewVTable<Data>,
+        Dyn: private::NewVTable<T>,
     {
         Self {
             inner: S::new(data),
-            vtable: T::new_vtable::<S>(),
+            vtable: Dyn::new_vtable::<S>(),
         }
     }
     #[doc(hidden)]
-    pub fn vtable(&self) -> &'static T::VTable {
+    pub fn vtable(&self) -> &'static Dyn::VTable {
         self.vtable
     }
 
@@ -64,7 +64,7 @@ impl<S: Storage, T: private::DynTrait + ?Sized> DynStorage<T, S> {
     }
 }
 
-impl<S: Storage, T: private::DynTrait + ?Sized> Drop for DynStorage<T, S> {
+impl<Dyn: private::DynTrait + ?Sized, S: Storage> Drop for DynStorage<Dyn, S> {
     fn drop(&mut self) {
         if let Some(drop_inner) = private::StorageVTable::drop_in_place(self.vtable) {
             // SAFETY: the storage data is no longer accessed after the call,
@@ -79,8 +79,8 @@ impl<S: Storage, T: private::DynTrait + ?Sized> Drop for DynStorage<T, S> {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-impl<S: Storage + fmt::Debug, T: private::DynTrait<VTable: fmt::Debug> + ?Sized> fmt::Debug
-    for DynStorage<T, S>
+impl<Dyn: private::DynTrait<VTable: fmt::Debug> + ?Sized, S: Storage + fmt::Debug> fmt::Debug
+    for DynStorage<Dyn, S>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DynStorage")
