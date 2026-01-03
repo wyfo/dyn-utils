@@ -130,7 +130,10 @@ pub(crate) fn impl_method(method: &TraitItemFn, dyn_method: Option<&TraitItemFn>
 
 pub(crate) fn sync_method(method: &TraitItemFn, ret: &TypeImplTrait) -> syn::Result<TraitItemFn> {
     let Some(output) = future_output(ret) else {
-        bail!(method, "`try_sync` must be used on async methods");
+        bail!(
+            method.sig.fn_token, // Because nightly doesn't give the same span for `method`
+            "`try_sync` must be used on async methods"
+        );
     };
     let mut sync_method = method.clone();
     sync_method.attrs.push(parse_quote!(#[doc(hidden)]));

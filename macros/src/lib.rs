@@ -112,7 +112,10 @@ pub fn sync(
 
 fn sync_impl(method: ImplItemFn) -> syn::Result<TokenStream> {
     if method.sig.asyncness.is_none() {
-        bail!(method.sig, "`dyn_utils::sync` must be used on async method");
+        bail!(
+            method.sig.fn_token, // Because nightly doesn't give the same span for `method`
+            "`dyn_utils::sync` must be used on async method"
+        );
     }
     let method_name = &method.sig.ident;
     let mut sync_method = method.clone();
