@@ -14,13 +14,13 @@ use crate::{
 
 #[derive(Debug)]
 pub struct AnyVTable {
-    dyn_vtable: DynVTable,
+    __dyn_vtable: DynVTable,
     type_id: TypeId,
 }
 
 impl StorageVTable for AnyVTable {
     fn dyn_vtable(&self) -> &DynVTable {
-        &self.dyn_vtable
+        &self.__dyn_vtable
     }
 }
 
@@ -32,7 +32,7 @@ unsafe impl<'__dyn, __Dyn: Any> NewVTable<__Dyn> for dyn Any + '__dyn {
     fn new_vtable<__Storage: Storage>() -> &'static Self::VTable {
         &const {
             AnyVTable {
-                dyn_vtable: DynVTable::new::<__Dyn>(),
+                __dyn_vtable: DynVTable::new::<__Dyn>(),
                 type_id: TypeId::of::<__Dyn>(),
             }
         }
@@ -71,13 +71,13 @@ impl<'__dyn, __Storage: Storage> DynStorage<dyn Any + '__dyn, __Storage> {
 
 #[derive(Debug)]
 pub struct FutureVTable {
-    dyn_vtable: DynVTable,
+    __dyn_vtable: DynVTable,
     poll: unsafe fn(),
 }
 
 impl StorageVTable for FutureVTable {
     fn dyn_vtable(&self) -> &DynVTable {
-        &self.dyn_vtable
+        &self.__dyn_vtable
     }
 }
 
@@ -95,7 +95,7 @@ unsafe impl<'__dyn, __Dyn: Future> NewVTable<__Dyn>
     fn new_vtable<__Storage: Storage>() -> &'static Self::VTable {
         &const {
             FutureVTable {
-                dyn_vtable: DynVTable::new::<__Dyn>(),
+                __dyn_vtable: DynVTable::new::<__Dyn>(),
                 poll: unsafe {
                     mem::transmute::<
                         unsafe fn(Pin<&mut __Storage>, &mut Context) -> Poll<__Dyn::Output>,
@@ -113,7 +113,7 @@ unsafe impl<'__dyn, __Dyn: Future> NewVTable<__Dyn>
     fn new_vtable<__Storage: Storage>() -> &'static Self::VTable {
         &const {
             FutureVTable {
-                dyn_vtable: DynVTable::new::<__Dyn>(),
+                __dyn_vtable: DynVTable::new::<__Dyn>(),
                 poll: unsafe {
                     mem::transmute::<
                         unsafe fn(Pin<&mut __Storage>, &mut Context) -> Poll<__Dyn::Output>,
@@ -155,7 +155,7 @@ impl<'__dyn, __Storage: Storage, __TypeOutput> Future
 
 #[derive(Debug)]
 pub struct IteratorVTable {
-    dyn_vtable: DynVTable,
+    __dyn_vtable: DynVTable,
     next: unsafe fn(),
     size_hint: unsafe fn(),
     nth: unsafe fn(),
@@ -163,7 +163,7 @@ pub struct IteratorVTable {
 
 impl StorageVTable for IteratorVTable {
     fn dyn_vtable(&self) -> &DynVTable {
-        &self.dyn_vtable
+        &self.__dyn_vtable
     }
 }
 
@@ -173,7 +173,7 @@ unsafe impl<'__dyn, __Dyn: Iterator> NewVTable<__Dyn>
     fn new_vtable<__Storage: Storage>() -> &'static Self::VTable {
         &const {
             IteratorVTable {
-                dyn_vtable: DynVTable::new::<__Dyn>(),
+                __dyn_vtable: DynVTable::new::<__Dyn>(),
                 next: unsafe {
                     mem::transmute::<unsafe fn(&mut __Storage) -> Option<__Dyn::Item>, unsafe fn()>(
                         |__self| __self.as_mut::<__Dyn>().next(),

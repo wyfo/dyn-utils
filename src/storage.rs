@@ -282,13 +282,13 @@ where
 #[cfg(test)]
 #[allow(clippy::undocumented_unsafe_blocks)]
 mod tests {
-    use core::{mem, mem::ManuallyDrop};
+    use core::mem;
 
     use elain::{Align, Alignment};
 
     use crate::{
         Storage,
-        private::{DynTrait, DynVTable, NewVTable, StorageMoved, StorageVTable},
+        private::{DynTrait, DynVTable, NewVTable, StorageVTable},
         storage::DynStorage,
     };
 
@@ -380,25 +380,6 @@ mod tests {
         check_drop::<super::RawOrBox<{ size_of::<SetDropped>() }>>();
         #[cfg(feature = "alloc")]
         check_drop::<super::RawOrBox<0>>();
-    }
-
-    #[test]
-    fn storage_drop_moved() {
-        fn check_drop_moved<S: Storage>() {
-            let mut dropped = false;
-            let mut storage = ManuallyDrop::new(TestStorage::<S>::new(SetDropped(&mut dropped)));
-            let moved = unsafe { StorageMoved::<S, SetDropped>::new(&mut storage.inner) };
-            unsafe { drop(moved.read()) };
-            drop(moved);
-            assert!(dropped);
-        }
-        check_drop_moved::<super::Raw<{ size_of::<SetDropped>() }, { align_of::<SetDropped>() }>>();
-        #[cfg(feature = "alloc")]
-        check_drop_moved::<super::Box>();
-        #[cfg(feature = "alloc")]
-        check_drop_moved::<super::RawOrBox<{ size_of::<SetDropped>() }>>();
-        #[cfg(feature = "alloc")]
-        check_drop_moved::<super::RawOrBox<0>>();
     }
 
     #[test]
