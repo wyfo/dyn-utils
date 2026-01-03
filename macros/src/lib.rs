@@ -60,7 +60,7 @@ fn dyn_compatible_impl(mut r#trait: ItemTrait) -> syn::Result<TokenStream> {
                     let default_storage = attrs.storage();
                     storages.push(parse_quote_spanned!(default_storage.span() => #storage: ::dyn_utils::Storage = #default_storage));
                     let dyn_method = dyn_method(&method, ret, &storage);
-                    let impl_method = impl_method(&method, Some(&dyn_method));
+                    let impl_method = impl_method(&dyn_method, true);
                     if attrs.try_sync() {
                         additional_trait_items.push(sync_method(&method, ret)?.into());
                         let is_sync = is_sync_constant(&method.sig, false);
@@ -72,7 +72,7 @@ fn dyn_compatible_impl(mut r#trait: ItemTrait) -> syn::Result<TokenStream> {
                     impl_items.push(impl_method.into());
                 } else {
                     attrs.check_no_attr()?;
-                    impl_items.push(impl_method(&method, None).into());
+                    impl_items.push(impl_method(&method, false).into());
                     dyn_items.push(method.into());
                 }
             }

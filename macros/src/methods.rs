@@ -114,16 +114,17 @@ fn forward_call(method: &Ident, args: &Punctuated<FnArg, Token![,]>) -> TokenStr
     quote!(__Dyn::#method(#(#args,)*))
 }
 
-pub(crate) fn impl_method(method: &TraitItemFn, dyn_method: Option<&TraitItemFn>) -> ImplItemFn {
-    let call = forward_call(&method.sig.ident, &method.sig.inputs);
+pub(crate) fn impl_method(dyn_method: &TraitItemFn, dyn_storage: bool) -> ImplItemFn {
+    let call = forward_call(&dyn_method.sig.ident, &dyn_method.sig.inputs);
     ImplItemFn {
         attrs: vec![],
         vis: Visibility::Inherited,
         defaultness: None,
-        sig: dyn_method.unwrap_or(method).sig.clone(),
-        block: match dyn_method {
-            Some(_) => parse_quote!({ ::dyn_utils::DynStorage::new(#call) }),
-            None => parse_quote!({ #call }),
+        sig: dyn_method.sig.clone(),
+        block: if dyn_storage {
+            parse_quote!({ ::dyn_utils::DynStorage::new(#call) })
+        } else {
+            parse_quote!({ #call })
         },
     }
 }
