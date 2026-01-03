@@ -1,4 +1,4 @@
-#![allow(unused)]
+use std::pin::Pin;
 
 use futures::FutureExt;
 
@@ -19,6 +19,7 @@ trait Test {
     fn future_send<'a>(&'_ self, s: &'a str) -> impl Future<Output = usize> + Send + use<Self>;
     #[dyn_utils(try_sync)]
     async fn empty(&self);
+    fn pinned_self(self: Pin<&mut Self>);
     nothing!();
 }
 
@@ -39,6 +40,7 @@ impl Test for () {
         let len = s.len();
         async move { len }
     }
+    fn pinned_self(self: Pin<&mut Self>) {}
     async fn empty(&self) {}
 }
 

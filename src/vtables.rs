@@ -100,7 +100,7 @@ unsafe impl<'__dyn, __Dyn: Future> NewVTable<__Dyn>
                     mem::transmute::<
                         unsafe fn(Pin<&mut __Storage>, &mut Context) -> Poll<__Dyn::Output>,
                         unsafe fn(),
-                    >(|__self, cx| __self.as_pinned_mut::<__Dyn>().poll(cx))
+                    >(|__self, cx| __Dyn::poll(__self.as_pinned_mut(), cx))
                 },
             }
         }
@@ -118,7 +118,7 @@ unsafe impl<'__dyn, __Dyn: Future> NewVTable<__Dyn>
                     mem::transmute::<
                         unsafe fn(Pin<&mut __Storage>, &mut Context) -> Poll<__Dyn::Output>,
                         unsafe fn(),
-                    >(|__self, cx| __self.as_pinned_mut::<__Dyn>().poll(cx))
+                    >(|__self, cx| __Dyn::poll(__self.as_pinned_mut(), cx))
                 },
             }
         }
@@ -176,19 +176,19 @@ unsafe impl<'__dyn, __Dyn: Iterator> NewVTable<__Dyn>
                 __dyn_vtable: DynVTable::new::<__Dyn>(),
                 next: unsafe {
                     mem::transmute::<unsafe fn(&mut __Storage) -> Option<__Dyn::Item>, unsafe fn()>(
-                        |__self| __self.as_mut::<__Dyn>().next(),
+                        |__self| __Dyn::next(__self.as_mut()),
                     )
                 },
                 size_hint: unsafe {
                     mem::transmute::<unsafe fn(&__Storage) -> (usize, Option<usize>), unsafe fn()>(
-                        |__self| __self.as_ref::<__Dyn>().size_hint(),
+                        |__self| __Dyn::size_hint(__self.as_ref()),
                     )
                 },
                 nth: unsafe {
                     mem::transmute::<
                         unsafe fn(&mut __Storage, usize) -> Option<__Dyn::Item>,
                         unsafe fn(),
-                    >(|__self, n| __self.as_mut::<__Dyn>().nth(n))
+                    >(|__self, n| __Dyn::nth(__self.as_mut(), n))
                 },
             }
         }

@@ -12,6 +12,10 @@ pub(crate) fn return_type(method: &TraitItemFn) -> Option<&Type> {
     try_match!(&method.sig.output, ReturnType::Type(_, ty) => ty.as_ref())
 }
 
+pub(crate) fn is_pinned(ty: &Type) -> bool {
+    matches!(ty, Type::Path(path) if path.path.segments.last().unwrap().ident == "Pin")
+}
+
 pub(crate) fn future_output(ret: &TypeImplTrait) -> Option<&Type> {
     let future = (ret.bounds.iter())
         .filter_map(try_match!(TypeParamBound::Trait))

@@ -10,17 +10,15 @@ use syn::{
 
 use crate::{
     macros::{bail, try_match},
-    utils::{CapturedLifetimes, future_output, return_type},
+    utils::{CapturedLifetimes, future_output, is_pinned, return_type},
 };
 
 pub(crate) fn is_dyn_compatible(method: &TraitItemFn) -> bool {
-    // `self` receiver requires `Self: Sized` bound, so methods can still be kept
-    // (and it's possible to implement them for `Box<dyn Trait>` or `DynStorage`)
-    let has_receiver =
-        (method.sig.inputs.first()).is_some_and(|arg| matches!(arg, FnArg::Receiver(_)));
+    let has_dyn_compatible_receiver =
+        (method.sig.receiver()).is_some_and(|recv| recv.reference.is_some() || is_pinned(&recv.ty));
     let has_no_generic_parameter_except_lifetime =
         (method.sig.generics.params.iter()).all(|p| matches!(p, GenericParam::Lifetime(_)));
-    has_receiver && has_no_generic_parameter_except_lifetime
+    has_dyn_compatible_receiver && has_no_generic_parameter_except_lifetime
 }
 
 pub(crate) fn handle_async_method(method: &mut TraitItemFn) {
