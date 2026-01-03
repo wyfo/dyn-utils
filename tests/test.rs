@@ -8,6 +8,7 @@ macro_rules! nothing {
 
 #[dyn_utils::dyn_compatible(trait = Test2)]
 trait Test {
+    type GAT<T>;
     type Result;
     fn method(&self) -> Self::Result;
     #[dyn_utils(storage = dyn_utils::DefaultStorage, try_sync)]
@@ -22,6 +23,7 @@ trait Test {
 }
 
 impl Test for () {
+    type GAT<T> = ();
     type Result = usize;
     fn method(&self) -> Self::Result {
         42

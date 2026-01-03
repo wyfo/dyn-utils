@@ -51,7 +51,7 @@ fn dyn_compatible_impl(mut r#trait: ItemTrait, dyn_trait: Ident) -> syn::Result<
     let mut additional_trait_items = Vec::new();
     for item in r#trait.items.iter_mut() {
         match item {
-            TraitItem::Type(ty) => {
+            TraitItem::Type(ty) if ty.generics.params.is_empty() => {
                 let (impl_generics, ty_generics, where_clause) = ty.generics.split_for_impl();
                 let ty_name = &ty.ident;
                 impl_items.push(parse_quote!(type #ty_name #impl_generics = <__Dyn as #trait_name>::#ty_name #ty_generics #where_clause;));
