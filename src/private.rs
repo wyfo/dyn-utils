@@ -1,6 +1,6 @@
 use core::{alloc::Layout, mem, ptr::NonNull};
 
-use crate::Storage;
+use crate::storage::Storage;
 
 pub trait DynTrait {
     type VTable: StorageVTable;

@@ -102,7 +102,7 @@ pub(crate) fn dyn_method(
         .for_each(|param| captured.visit_generic_param_mut(param));
     method.sig.generics.params.push(parse_quote!('__dyn));
     (method.sig.inputs.iter_mut()).for_each(|arg| captured.visit_fn_arg_mut(arg));
-    method.sig.output = parse_quote!(-> ::dyn_utils::storage::DynStorage<#dyn_ret, #storage>);
+    method.sig.output = parse_quote!(-> ::dyn_utils::DynStorage<#dyn_ret, #storage>);
     method
 }
 

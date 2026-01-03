@@ -6,12 +6,12 @@
 extern crate alloc;
 
 use core::{
-    alloc::Layout,
-    hint, mem,
+    fmt, hint, mem,
     pin::Pin,
-    ptr::NonNull,
     task::{Context, Poll},
 };
+
+use storage::Storage;
 
 #[doc(hidden)]
 pub mod private;
@@ -20,36 +20,74 @@ mod vtables;
 
 pub use dyn_utils_macros::*;
 pub use elain::*;
-pub use storage::DynStorage;
 
-/// Default storage for methods' return.
+/// Default storage for return-position `impl Trait`.
 pub type DefaultStorage = storage::RawOrBox<{ 16 * size_of::<usize>() }>;
 
-/// A storage that can be used to store dynamic type-erased objects.
-///
-/// # Safety
-///
-/// `can_store` return must be constant for `T`.
-/// `ptr`/`ptr_mut` must return a pointer to the data stored in the storage.
-pub unsafe trait Storage: Sized + 'static {
-    fn new<T>(data: T) -> Self;
-    fn ptr(&self) -> NonNull<()>;
-    fn ptr_mut(&mut self) -> NonNull<()>;
-    unsafe fn as_ref<T>(&self) -> &T {
-        unsafe { self.ptr().cast().as_ref() }
+pub struct DynStorage<T: private::DynTrait + ?Sized, S: Storage = DefaultStorage> {
+    inner: S,
+    vtable: &'static T::VTable,
+}
+
+unsafe impl<S: Storage, T: private::DynTrait + ?Sized> Send for DynStorage<T, S> {}
+
+unsafe impl<S: Storage, T: private::DynTrait + ?Sized> Sync for DynStorage<T, S> {}
+
+impl<S: Storage, T: private::DynTrait + ?Sized> DynStorage<T, S> {
+    pub fn new<Data>(data: Data) -> Self
+    where
+        T: private::NewVTable<Data>,
+    {
+        Self {
+            inner: S::new(data),
+            vtable: T::new_vtable::<S>(),
+        }
     }
-    unsafe fn as_mut<T>(&mut self) -> &mut T {
-        unsafe { self.ptr_mut().cast().as_mut() }
+    #[doc(hidden)]
+    pub fn vtable(&self) -> &'static T::VTable {
+        self.vtable
     }
-    unsafe fn as_pinned_mut<T>(self: Pin<&mut Self>) -> Pin<&mut T> {
-        unsafe { self.map_unchecked_mut(|this| this.as_mut()) }
+
+    #[doc(hidden)]
+    pub fn inner(&self) -> &S {
+        &self.inner
     }
-    /// # Safety
-    ///
-    /// `drop_in_place` must be called once, and the storage must not be used
-    /// after. `layout` must be the layout of the `data` passed in `Self::new`
-    /// (or in other constructor like `new_box`, etc.)
-    unsafe fn drop_in_place(&mut self, layout: Layout);
+
+    #[doc(hidden)]
+    pub fn inner_mut(&mut self) -> &mut S {
+        &mut self.inner
+    }
+
+    #[doc(hidden)]
+    pub fn inner_pinned_mut(self: Pin<&mut Self>) -> Pin<&mut S> {
+        unsafe { self.map_unchecked_mut(|this| &mut this.inner) }
+    }
+}
+
+impl<S: Storage, T: private::DynTrait + ?Sized> Drop for DynStorage<T, S> {
+    fn drop(&mut self) {
+        if let Some(drop_inner) = private::StorageVTable::drop_in_place(self.vtable) {
+            // SAFETY: the storage data is no longer accessed after the call,
+            // and is matched by the vtable as per function contract.
+            unsafe { drop_inner(self.inner.ptr_mut()) };
+        }
+        let layout = private::StorageVTable::layout(self.vtable);
+        // SAFETY: the storage data is no longer accessed after the call,
+        // and is matched by the vtable as per function contract.
+        unsafe { self.inner.drop_in_place(layout) };
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl<S: Storage + fmt::Debug, T: private::DynTrait<VTable: fmt::Debug> + ?Sized> fmt::Debug
+    for DynStorage<T, S>
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DynStorage")
+            .field("inner", &self.inner)
+            .field("vtable", &self.vtable)
+            .finish()
+    }
 }
 
 pub enum TrySync<F: Future> {

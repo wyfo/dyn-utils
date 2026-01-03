@@ -58,7 +58,7 @@ fn dyn_compatible_impl(mut r#trait: ItemTrait) -> syn::Result<TokenStream> {
                     let storage =
                         format_ident!("__Storage{}", method.sig.ident.to_string().to_pascal_case());
                     let default_storage = attrs.storage();
-                    storages.push(parse_quote_spanned!(default_storage.span() => #storage: ::dyn_utils::Storage = #default_storage));
+                    storages.push(parse_quote_spanned!(default_storage.span() => #storage: ::dyn_utils::storage::Storage = #default_storage));
                     let dyn_method = dyn_method(&method, ret, &storage);
                     let impl_method = impl_method(&dyn_method, true);
                     if attrs.try_sync() {
