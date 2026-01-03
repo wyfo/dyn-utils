@@ -1,11 +1,11 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 use heck::ToPascalCase;
-use proc_macro2::TokenStream;
+use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use syn::{
-    GenericParam, ImplItem, ImplItemFn, ItemTrait, TraitItem, TraitItemFn, Type, parse_macro_input,
-    parse_quote, parse_quote_spanned, spanned::Spanned,
+    GenericParam, ImplItem, ImplItemFn, ItemTrait, Token, TraitItem, TraitItemFn, Type,
+    parse_macro_input, parse_quote, parse_quote_spanned, spanned::Spanned,
 };
 
 use crate::{
@@ -23,15 +23,27 @@ mod utils;
 
 #[proc_macro_attribute]
 pub fn dyn_compatible(
-    _attr: proc_macro::TokenStream,
+    args: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    dyn_compatible_impl(parse_macro_input!(item as ItemTrait))
+    let r#trait = parse_macro_input!(item as ItemTrait);
+    let mut dyn_trait = format_ident!("{}Dyn", r#trait.ident);
+    let args_parser = syn::meta::parser(|meta| {
+        if meta.path.is_ident("trait") {
+            meta.input.parse::<Token![=]>()?;
+            dyn_trait = meta.input.parse()?;
+        } else {
+            bail!(meta.path, "unknown attribute");
+        }
+        Ok(())
+    });
+    parse_macro_input!(args with args_parser);
+    dyn_compatible_impl(r#trait, dyn_trait)
         .unwrap_or_else(|err| err.to_compile_error())
         .into()
 }
 
-fn dyn_compatible_impl(mut r#trait: ItemTrait) -> syn::Result<TokenStream> {
+fn dyn_compatible_impl(mut r#trait: ItemTrait, dyn_trait: Ident) -> syn::Result<TokenStream> {
     let trait_name = &r#trait.ident;
     let mut dyn_items = Vec::new();
     let mut storages = Vec::<GenericParam>::new();
@@ -80,7 +92,6 @@ fn dyn_compatible_impl(mut r#trait: ItemTrait) -> syn::Result<TokenStream> {
         }
     }
     r#trait.items.extend(additional_trait_items);
-    let dyn_trait = format_ident!("Dyn{}", r#trait.ident);
     let unsafety = &r#trait.unsafety;
     let vis = &r#trait.vis;
     let supertraits = &r#trait.supertraits;

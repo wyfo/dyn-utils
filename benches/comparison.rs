@@ -68,25 +68,25 @@ impl Trait3 for () {
 
 #[divan::bench]
 fn dyn_utils_async(b: Bencher) {
-    let test = black_box(Box::new(()) as Box<dyn DynTrait>);
+    let test = black_box(Box::new(()) as Box<dyn TraitDyn>);
     b.bench_local(|| now_or_never!(test.future("test")));
 }
 
 #[divan::bench]
 fn dyn_utils_try_sync(b: Bencher) {
-    let test = black_box(Box::new(Sync) as Box<dyn DynTrait>);
+    let test = black_box(Box::new(Sync) as Box<dyn TraitDyn>);
     b.bench_local(|| now_or_never!(test.future_try_sync("test")));
 }
 
 #[divan::bench]
 fn dyn_utils_try_sync_fallback(b: Bencher) {
-    let test = black_box(Box::new(()) as Box<dyn DynTrait>);
+    let test = black_box(Box::new(()) as Box<dyn TraitDyn>);
     b.bench_local(|| now_or_never!(test.future_try_sync("test")));
 }
 
 #[divan::bench]
 fn dyn_utils_iter(b: Bencher) {
-    let test = black_box(Box::new(()) as Box<dyn DynTrait>);
+    let test = black_box(Box::new(()) as Box<dyn TraitDyn>);
     b.bench_local(|| test.iter().count());
 }
 

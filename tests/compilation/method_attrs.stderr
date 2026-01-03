@@ -1,62 +1,80 @@
-error: attribute must be used on a method with Return Position Impl Trait
- --> tests/compilation/method_attrs.rs:3:17
+error: unknown attribute
+ --> tests/compilation/method_attrs.rs:1:29
   |
-3 |     #[dyn_utils(storage = dyn_utils::DefaultStorage)]
-  |                 ^^^^^^^
+1 | #[dyn_utils::dyn_compatible(unknown)]
+  |                             ^^^^^^^
 
 error: expected `=`
- --> tests/compilation/method_attrs.rs:9:24
+ --> tests/compilation/method_attrs.rs:6:34
   |
-9 |     #[dyn_utils(storage(dyn_utils::DefaultStorage))]
-  |                        ^
+6 | #[dyn_utils::dyn_compatible(trait(Dyn))]
+  |                                  ^
 
 error: expected identifier
-  --> tests/compilation/method_attrs.rs:15:27
+  --> tests/compilation/method_attrs.rs:11:37
    |
-15 |     #[dyn_utils(storage = ..)]
+11 | #[dyn_utils::dyn_compatible(trait = ?)]
+   |                                     ^
+
+error: attribute must be used on a method with Return Position Impl Trait
+  --> tests/compilation/method_attrs.rs:18:17
+   |
+18 |     #[dyn_utils(storage = dyn_utils::DefaultStorage)]
+   |                 ^^^^^^^
+
+error: expected `=`
+  --> tests/compilation/method_attrs.rs:24:24
+   |
+24 |     #[dyn_utils(storage(dyn_utils::DefaultStorage))]
+   |                        ^
+
+error: expected identifier
+  --> tests/compilation/method_attrs.rs:30:27
+   |
+30 |     #[dyn_utils(storage = ?)]
    |                           ^
 
 error: attribute must be used on a method with Return Position Impl Trait
-  --> tests/compilation/method_attrs.rs:21:17
+  --> tests/compilation/method_attrs.rs:36:17
    |
-21 |     #[dyn_utils(try_sync)]
+36 |     #[dyn_utils(try_sync)]
    |                 ^^^^^^^^
 
 error: `try_sync` must be used on async methods
-  --> tests/compilation/method_attrs.rs:28:5
+  --> tests/compilation/method_attrs.rs:43:5
    |
-28 |     fn method(&self) -> impl Iterator<Item = ()>;
+43 |     fn method(&self) -> impl Iterator<Item = ()>;
    |     ^^
 
 error: `try_sync` must be used on async methods
-  --> tests/compilation/method_attrs.rs:34:5
+  --> tests/compilation/method_attrs.rs:49:5
    |
-34 |     fn method(&self) -> impl Future;
+49 |     fn method(&self) -> impl Future;
    |     ^^
 
 error: `try_sync` must be used on async methods
-  --> tests/compilation/method_attrs.rs:40:5
+  --> tests/compilation/method_attrs.rs:55:5
    |
-40 |     fn method(&self) -> impl Future<Item = ()>;
+55 |     fn method(&self) -> impl Future<Item = ()>;
    |     ^^
 
 error: unknown attribute
-  --> tests/compilation/method_attrs.rs:45:17
+  --> tests/compilation/method_attrs.rs:60:17
    |
-45 |     #[dyn_utils(unknown)]
+60 |     #[dyn_utils(unknown)]
    |                 ^^^^^^^
 
 error: `dyn_utils::sync` must be used on async method
-  --> tests/compilation/method_attrs.rs:55:5
+  --> tests/compilation/method_attrs.rs:70:5
    |
-55 |     fn method(&self) {}
+70 |     fn method(&self) {}
    |     ^^
 
 error[E0046]: not all trait items implemented, missing: `method`
-  --> tests/compilation/method_attrs.rs:53:1
+  --> tests/compilation/method_attrs.rs:68:1
    |
-50 |     fn method(&self);
+65 |     fn method(&self);
    |     ----------------- `method` from trait
 ...
-53 | impl Trait for () {
+68 | impl Trait for () {
    | ^^^^^^^^^^^^^^^^^ missing `method` in implementation

@@ -6,7 +6,7 @@ macro_rules! nothing {
     () => {};
 }
 
-#[dyn_utils::dyn_compatible]
+#[dyn_utils::dyn_compatible(trait = Test2)]
 trait Test {
     type Result;
     fn method(&self) -> Self::Result;
@@ -42,7 +42,7 @@ impl Test for () {
 
 #[test]
 fn test() {
-    let test = Box::new(()) as Box<dyn DynTest<Result = usize>>;
+    let test = Box::new(()) as Box<dyn Test2<Result = usize>>;
     test.empty().now_or_never().unwrap();
     assert_eq!(test.method(), 42);
     assert_eq!(test.future("test").now_or_never(), Some("test"));

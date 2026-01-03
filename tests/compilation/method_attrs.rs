@@ -1,3 +1,18 @@
+#[dyn_utils::dyn_compatible(unknown)]
+trait UnknownAttribute {
+    fn method(&self);
+}
+
+#[dyn_utils::dyn_compatible(trait(Dyn))]
+trait TraitWithoutEqual {
+    fn method(&self);
+}
+
+#[dyn_utils::dyn_compatible(trait = ?)]
+trait InvalidTrait {
+    fn method(&self);
+}
+
 #[dyn_utils::dyn_compatible]
 trait StorageOnNormalMethod {
     #[dyn_utils(storage = dyn_utils::DefaultStorage)]
@@ -12,7 +27,7 @@ trait StorageWithoutEqual {
 
 #[dyn_utils::dyn_compatible]
 trait InvalidStorage {
-    #[dyn_utils(storage = ..)]
+    #[dyn_utils(storage = ?)]
     fn method(&self);
 }
 
@@ -41,7 +56,7 @@ trait TrySyncOnDummyFuture2 {
 }
 
 #[dyn_utils::dyn_compatible]
-trait UnknownAttribute {
+trait UnknownAttribute2 {
     #[dyn_utils(unknown)]
     fn method(&self);
 }
@@ -60,7 +75,7 @@ macro_rules! nothing {
 }
 
 // // TODO Only for coverage, and I don't know why
-#[dyn_utils::dyn_compatible]
+#[dyn_utils::dyn_compatible(trait = Dyn)]
 trait ForCoverage {
     type Result;
     fn method(&self) -> Self::Result;
