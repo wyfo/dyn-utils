@@ -1,0 +1,86 @@
+error: unexpected token in nested attribute, expected ident
+ --> tests/compilation/errors.rs:1:29
+  |
+1 | #[dyn_utils::dyn_compatible(.)]
+  |                             ^
+
+error: expected this path to be an identifier
+ --> tests/compilation/errors.rs:6:29
+  |
+6 | #[dyn_utils::dyn_compatible(path::Rename)]
+  |                             ^^^^^^^^^^^^
+
+error: expected `=`
+  --> tests/compilation/errors.rs:11:35
+   |
+11 | #[dyn_utils::dyn_compatible(remote(trait))]
+   |                                   ^
+
+error: expected identifier
+  --> tests/compilation/errors.rs:16:38
+   |
+16 | #[dyn_utils::dyn_compatible(remote = ?)]
+   |                                      ^
+
+error: attribute must be used on a method with Return Position Impl Trait
+  --> tests/compilation/errors.rs:23:17
+   |
+23 |     #[dyn_utils(storage = dyn_utils::DefaultStorage)]
+   |                 ^^^^^^^
+
+error: expected `=`
+  --> tests/compilation/errors.rs:29:24
+   |
+29 |     #[dyn_utils(storage(dyn_utils::DefaultStorage))]
+   |                        ^
+
+error: expected identifier
+  --> tests/compilation/errors.rs:35:27
+   |
+35 |     #[dyn_utils(storage = ?)]
+   |                           ^
+
+error: attribute must be used on a method with Return Position Impl Trait
+  --> tests/compilation/errors.rs:41:17
+   |
+41 |     #[dyn_utils(try_sync)]
+   |                 ^^^^^^^^
+
+error: `try_sync` must be used on async methods
+  --> tests/compilation/errors.rs:48:5
+   |
+48 |     fn method(&self) -> impl Iterator<Item = ()>;
+   |     ^^
+
+error: `try_sync` must be used on async methods
+  --> tests/compilation/errors.rs:54:5
+   |
+54 |     fn method(&self) -> impl Future;
+   |     ^^
+
+error: `try_sync` must be used on async methods
+  --> tests/compilation/errors.rs:60:5
+   |
+60 |     fn method(&self) -> impl Future<Item = ()>;
+   |     ^^
+
+error: unknown attribute
+  --> tests/compilation/errors.rs:65:17
+   |
+65 |     #[dyn_utils(unknown)]
+   |                 ^^^^^^^
+
+error: `dyn_utils::sync` must be used on async method
+  --> tests/compilation/errors.rs:75:5
+   |
+75 |     fn method(&self) {}
+   |     ^^
+
+error[E0046]: not all trait items implemented, missing: `method`
+  --> tests/compilation/errors.rs:73:1
+   |
+70 |     fn method(&self);
+   |     ----------------- `method` from trait
+...
+73 | impl Trait for () {
+   | ^^^^^^^^^^^^^^^^^ missing `method` in implementation

@@ -4,7 +4,7 @@ use heck::ToPascalCase;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use syn::{
-    GenericParam, ImplItem, ImplItemFn, ItemTrait, Token, TraitItem, TraitItemFn, Type,
+    GenericParam, ImplItem, ImplItemFn, ItemTrait, Path, Token, TraitItem, TraitItemFn, Type,
     parse_macro_input, parse_quote, parse_quote_spanned, spanned::Spanned,
 };
 
@@ -27,24 +27,30 @@ pub fn dyn_compatible(
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     let r#trait = parse_macro_input!(item as ItemTrait);
+    let mut remote = None;
     let mut dyn_trait = format_ident!("{}Dyn", r#trait.ident);
     let args_parser = syn::meta::parser(|meta| {
-        if meta.path.is_ident("trait") {
+        if meta.path.is_ident("remote") {
             meta.input.parse::<Token![=]>()?;
-            dyn_trait = meta.input.parse()?;
+            remote = Some(meta.input.parse()?);
         } else {
-            bail!(meta.path, "unknown attribute");
+            dyn_trait = meta.path.require_ident()?.clone();
         }
         Ok(())
     });
     parse_macro_input!(args with args_parser);
-    dyn_compatible_impl(r#trait, dyn_trait)
+    dyn_compatible_impl(r#trait, dyn_trait, remote)
         .unwrap_or_else(|err| err.to_compile_error())
         .into()
 }
 
-fn dyn_compatible_impl(mut r#trait: ItemTrait, dyn_trait: Ident) -> syn::Result<TokenStream> {
-    let trait_name = &r#trait.ident;
+fn dyn_compatible_impl(
+    mut r#trait: ItemTrait,
+    dyn_trait: Ident,
+    remote: Option<Path>,
+) -> syn::Result<TokenStream> {
+    let include_trait = remote.is_none();
+    let remote = remote.unwrap_or_else(|| r#trait.ident.clone().into());
     let mut dyn_items = Vec::new();
     let mut storages = Vec::<GenericParam>::new();
     let mut impl_items = Vec::<ImplItem>::new();
@@ -54,7 +60,7 @@ fn dyn_compatible_impl(mut r#trait: ItemTrait, dyn_trait: Ident) -> syn::Result<
             TraitItem::Type(ty) if ty.generics.params.is_empty() => {
                 let (impl_generics, ty_generics, where_clause) = ty.generics.split_for_impl();
                 let ty_name = &ty.ident;
-                impl_items.push(parse_quote!(type #ty_name #impl_generics = <__Dyn as #trait_name>::#ty_name #ty_generics #where_clause;));
+                impl_items.push(parse_quote!(type #ty_name #impl_generics = <__Dyn as #remote>::#ty_name #ty_generics #where_clause;));
                 dyn_items.push(item.clone());
             }
             TraitItem::Fn(method) if is_dyn_compatible(method) => {
@@ -102,8 +108,9 @@ fn dyn_compatible_impl(mut r#trait: ItemTrait, dyn_trait: Ident) -> syn::Result<
     let mut impl_generics = dyn_generics.clone();
     impl_generics
         .params
-        .push(parse_quote!(__Dyn: #trait_name #trait_generics_ty));
+        .push(parse_quote!(__Dyn: #remote #trait_generics_ty));
     let (impl_generics, _, _) = impl_generics.split_for_impl();
+    let r#trait = include_trait.then_some(&r#trait);
     Ok(quote! {
         #r#trait
         #vis #unsafety trait #dyn_trait #dyn_generics #supertraits #where_clause { #(#dyn_items)* }

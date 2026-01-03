@@ -1,15 +1,20 @@
-#[dyn_utils::dyn_compatible(unknown)]
-trait UnknownAttribute {
+#[dyn_utils::dyn_compatible(.)]
+trait InvalidRename {
     fn method(&self);
 }
 
-#[dyn_utils::dyn_compatible(trait(Dyn))]
-trait TraitWithoutEqual {
+#[dyn_utils::dyn_compatible(path::Rename)]
+trait RenamePath {
     fn method(&self);
 }
 
-#[dyn_utils::dyn_compatible(trait = ?)]
-trait InvalidTrait {
+#[dyn_utils::dyn_compatible(remote(trait))]
+trait RemoteWithoutEqual {
+    fn method(&self);
+}
+
+#[dyn_utils::dyn_compatible(remote = ?)]
+trait InvalidRemote {
     fn method(&self);
 }
 
@@ -61,11 +66,11 @@ trait UnknownAttribute2 {
     fn method(&self);
 }
 
-trait Trait {
+trait SyncOnSyncMethod {
     fn method(&self);
 }
 
-impl Trait for () {
+impl SyncOnSyncMethod for () {
     #[dyn_utils::sync]
     fn method(&self) {}
 }
@@ -74,8 +79,8 @@ macro_rules! nothing {
     () => {};
 }
 
-// // TODO Only for coverage, and I don't know why
-#[dyn_utils::dyn_compatible(trait = Dyn)]
+// TODO Only for coverage, and I don't know why
+#[dyn_utils::dyn_compatible(Dyn)]
 trait ForCoverage {
     type Result;
     fn method(&self) -> Self::Result;
@@ -91,6 +96,19 @@ impl ForCoverage for () {
     async fn empty(&self) {}
     #[dyn_utils::sync]
     async fn future(&self) {}
+}
+
+trait Remote {
+    fn method(&self);
+}
+
+#[dyn_utils::dyn_compatible(remote = crate::Remote)]
+trait Remote {
+    fn method(&self);
+}
+
+impl Remote for () {
+    fn method(&self) {}
 }
 
 fn main() {}

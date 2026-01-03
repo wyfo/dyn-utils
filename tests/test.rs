@@ -6,7 +6,7 @@ macro_rules! nothing {
     () => {};
 }
 
-#[dyn_utils::dyn_compatible(trait = Test2)]
+#[dyn_utils::dyn_compatible(Test2)]
 trait Test {
     type GAT<T>;
     type Result;
