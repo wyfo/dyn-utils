@@ -17,7 +17,7 @@ use elain::{Align, Alignment};
 ///
 /// `can_store` return must be constant for `T`.
 /// `ptr`/`ptr_mut` must return a pointer to the data stored in the storage.
-pub unsafe trait Storage: Sized + 'static {
+pub unsafe trait Storage: Sized {
     fn new<T>(data: T) -> Self;
     fn ptr(&self) -> NonNull<()>;
     fn ptr_mut(&mut self) -> NonNull<()>;

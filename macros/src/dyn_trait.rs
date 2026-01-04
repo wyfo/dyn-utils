@@ -7,7 +7,8 @@ use syn::{
     CapturedParam, GenericParam, Generics, ImplItem, ImplItemFn, ItemTrait, Lifetime,
     LifetimeParam, Path, Receiver, Signature, Token, TraitItem, TraitItemConst, TraitItemFn,
     TraitItemType, Type, TypeImplTrait, TypeParamBound, TypeReference, TypeTraitObject,
-    meta::ParseNestedMeta, parse_quote, parse_quote_spanned, spanned::Spanned, visit_mut::VisitMut,
+    WherePredicate, meta::ParseNestedMeta, parse_quote, parse_quote_spanned, spanned::Spanned,
+    visit_mut::VisitMut,
 };
 
 use crate::{
@@ -105,6 +106,7 @@ struct DynTrait {
     dyn_trait_name: Ident,
     dyn_utils: Path,
     remote: Path,
+    trait_generics: Vec<Ident>,
     additional_trait_items: Vec<TraitItem>,
     dyn_items: Vec<TraitItem>,
     impl_items: Vec<ImplItem>,
@@ -119,6 +121,9 @@ impl DynTrait {
             dyn_trait_name: format_ident!("{dyn_trait}"),
             dyn_utils: opts.dyn_utils,
             remote: opts.remote.unwrap_or_else(|| r#trait.ident.clone().into()),
+            trait_generics: (r#trait.generics.type_params())
+                .map(|t| t.ident.clone())
+                .collect(),
             additional_trait_items: Vec::new(),
             dyn_items: Vec::new(),
             impl_items: Vec::new(),
@@ -135,9 +140,8 @@ impl DynTrait {
     }
 
     fn parse_method(&mut self, method: &mut TraitItemFn) -> syn::Result<()> {
-        let dyn_utils = &self.dyn_utils;
         let attrs = MethodAttrs::parse(method)?;
-        let dyn_method = DynMethod::new(dyn_utils, method);
+        let dyn_method = DynMethod::new(&self.dyn_utils, &self.trait_generics, method);
         self.generic_storages
             .extend(dyn_method.generic_storage(attrs.storage));
         if attrs.try_sync {
@@ -197,7 +201,7 @@ struct DynMethod<'a> {
 }
 
 impl<'a> DynMethod<'a> {
-    fn new(dyn_utils: &'a Path, method: &'a TraitItemFn) -> Self {
+    fn new(dyn_utils: &'a Path, trait_generics: &[Ident], method: &'a TraitItemFn) -> Self {
         let orig_sig = &method.sig;
         let mut method = TraitItemFn {
             attrs: method.attrs.clone(),
@@ -219,7 +223,7 @@ impl<'a> DynMethod<'a> {
         let storage = (rpit.is_some())
             .then(|| format_ident!("__Storage{}", method.sig.ident.to_string().to_pascal_case()));
         if let Some(rpit) = &rpit {
-            Self::update_dyn_signature(dyn_utils, &mut method.sig, rpit, &storage);
+            Self::update_dyn_signature(dyn_utils, trait_generics, &mut method.sig, rpit, &storage);
         }
         Self {
             orig_sig,
@@ -231,7 +235,8 @@ impl<'a> DynMethod<'a> {
     }
 
     fn update_dyn_signature(
-        dyn_utils: &'a Path,
+        dyn_utils: &Path,
+        trait_generics: &[Ident],
         sig: &mut Signature,
         rpit: &TypeImplTrait,
         storage: &Option<Ident>,
@@ -246,11 +251,12 @@ impl<'a> DynMethod<'a> {
                 .chain([parse_quote!('__dyn)])
                 .collect(),
         };
-        // Because even precise capture must capture `Self`, so its lifetime is bound
-        (sig.generics)
-            .make_where_clause()
-            .predicates
-            .push(parse_quote!(Self: '__dyn));
+        // All type parameters are captured, so their lifetime must be bounded
+        sig.generics.make_where_clause().predicates.extend(
+            (trait_generics.iter())
+                .map(|p| parse_quote!(#p: '__dyn))
+                .chain::<[WherePredicate; 1]>([parse_quote!(Self: '__dyn)]),
+        );
         (sig.generics.params.iter_mut()).for_each(|param| captured.visit_generic_param_mut(param));
         sig.generics.params.insert(0, parse_quote!('__dyn));
         (sig.inputs.iter_mut()).for_each(|arg| captured.visit_fn_arg_mut(arg));

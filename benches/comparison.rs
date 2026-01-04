@@ -21,23 +21,30 @@ macro_rules! now_or_never {
 }
 
 #[dyn_utils::dyn_trait]
-trait Trait {
+trait Trait<Storage: dyn_utils::storage::Storage = dyn_utils::DefaultStorage> {
     #[dyn_trait(try_sync)]
     async fn future(&self, s: &str) -> usize {
         s.len()
     }
-    fn future_with_storage<'a, 's>(
+    fn future_with_storage<'a, 'storage>(
         &'a self,
         s: &'a str,
-        storage: Pin<&'s mut Option<DynStorage<dyn Future<Output = usize> + 'a>>>,
-    ) -> Pin<&'s mut (dyn Future<Output = usize> + 'a)> {
+        storage: Pin<&'storage mut Option<DynStorage<dyn Future<Output = usize> + 'a, Storage>>>,
+    ) -> Pin<&'storage mut (dyn Future<Output = usize> + 'a)>
+    where
+        Storage: 'a,
+    {
         DynStorage::insert_pinned(storage, self.future(s))
     }
-    fn future_with_storage_option_future<'a>(
+    fn future_with_storage_option_future<'a, 'storage>(
         &'a self,
         s: &'a str,
-        mut storage: Pin<&mut OptionFuture<DynStorage<dyn Future<Output = usize> + 'a>>>,
-    ) {
+        mut storage: Pin<
+            &'storage mut OptionFuture<DynStorage<dyn Future<Output = usize> + 'a, Storage>>,
+        >,
+    ) where
+        Storage: 'a,
+    {
         storage.set(Some(DynStorage::new(self.future(s))).into())
     }
     fn iter(&self) -> impl Iterator<Item = usize> {
