@@ -6,17 +6,19 @@
 extern crate alloc;
 
 use core::{
-    fmt, hint, mem,
+    fmt, hint,
+    marker::PhantomData,
+    mem,
     pin::Pin,
     task::{Context, Poll},
 };
 
 use storage::Storage;
 
+mod impls;
 #[doc(hidden)]
 pub mod private;
 pub mod storage;
-mod vtables;
 
 pub use dyn_utils_macros::*;
 pub use elain::*;
@@ -27,6 +29,7 @@ pub type DefaultStorage = storage::RawOrBox<{ 16 * size_of::<usize>() }>;
 pub struct DynStorage<Dyn: private::DynTrait + ?Sized, S: Storage = DefaultStorage> {
     inner: S,
     vtable: &'static Dyn::VTable,
+    _phantom: PhantomData<Dyn>,
 }
 
 unsafe impl<Dyn: private::DynTrait + ?Sized, S: Storage> Send for DynStorage<Dyn, S> {}
@@ -41,8 +44,10 @@ impl<S: Storage, Dyn: private::DynTrait + ?Sized> DynStorage<Dyn, S> {
         Self {
             inner: S::new(data),
             vtable: Dyn::new_vtable::<S>(),
+            _phantom: PhantomData,
         }
     }
+
     #[doc(hidden)]
     pub fn vtable(&self) -> &'static Dyn::VTable {
         self.vtable
@@ -66,12 +71,12 @@ impl<S: Storage, Dyn: private::DynTrait + ?Sized> DynStorage<Dyn, S> {
 
 impl<Dyn: private::DynTrait + ?Sized, S: Storage> Drop for DynStorage<Dyn, S> {
     fn drop(&mut self) {
-        if let Some(drop_inner) = private::StorageVTable::drop_in_place(self.vtable) {
+        if let Some(drop_inner) = Dyn::drop_in_place(self.vtable) {
             // SAFETY: the storage data is no longer accessed after the call,
             // and is matched by the vtable as per function contract.
             unsafe { drop_inner(self.inner.ptr_mut()) };
         }
-        let layout = private::StorageVTable::layout(self.vtable);
+        let layout = Dyn::layout(self.vtable);
         // SAFETY: the storage data is no longer accessed after the call,
         // and is matched by the vtable as per function contract.
         unsafe { self.inner.drop_in_place(layout) };

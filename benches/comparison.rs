@@ -18,9 +18,9 @@ macro_rules! now_or_never {
     };
 }
 
-#[dyn_utils::dyn_compatible]
+#[dyn_utils::dyn_trait]
 trait Trait {
-    #[dyn_utils(try_sync)]
+    #[dyn_utils(try_sync, Send)]
     async fn future(&self, s: &str) -> usize {
         s.len()
     }

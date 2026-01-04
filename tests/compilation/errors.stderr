@@ -82,5 +82,5 @@ error[E0046]: not all trait items implemented, missing: `method`
 70 |     fn method(&self);
    |     ----------------- `method` from trait
 ...
-73 | impl Trait for () {
-   | ^^^^^^^^^^^^^^^^^ missing `method` in implementation
+73 | impl SyncOnSyncMethod for () {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `method` in implementation

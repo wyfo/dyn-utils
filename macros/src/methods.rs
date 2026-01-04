@@ -4,35 +4,20 @@ use proc_macro2::{Ident, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use syn::{
     FnArg, GenericParam, ImplItemFn, Path, ReturnType, Signature, Token, TraitItemFn,
-    TypeImplTrait, TypeParamBound, TypeTraitObject, Visibility, parse_quote,
-    punctuated::Punctuated, visit_mut::VisitMut,
+    TypeImplTrait, TypeParamBound, TypeTraitObject, parse_quote, punctuated::Punctuated,
+    visit_mut::VisitMut,
 };
 
 use crate::{
     macros::{bail, try_match},
-    utils::{CapturedLifetimes, future_output, is_pinned, return_type},
+    utils::{CapturedLifetimes, future_output, is_pinned, return_type, to_impl_method},
 };
-
-pub(crate) fn is_dyn_compatible(method: &TraitItemFn) -> bool {
-    let has_dyn_compatible_receiver =
-        (method.sig.receiver()).is_some_and(|recv| recv.reference.is_some() || is_pinned(&recv.ty));
-    let has_no_generic_parameter_except_lifetime =
-        (method.sig.generics.params.iter()).all(|p| matches!(p, GenericParam::Lifetime(_)));
-    has_dyn_compatible_receiver && has_no_generic_parameter_except_lifetime
-}
-
-pub(crate) fn handle_async_method(method: &mut TraitItemFn) {
-    if method.sig.asyncness.is_some() {
-        method.sig.asyncness = None;
-        let output = return_type(method).map_or_else(|| quote!(()), ToTokens::to_token_stream);
-        method.sig.output = parse_quote!(-> impl Future<Output = #output>);
-    }
-}
 
 #[derive(Default)]
 pub(crate) struct MethodAttrs {
-    try_sync: Option<Path>,
+    send: Option<Path>,
     storage: Option<(Path, Path)>,
+    try_sync: Option<Path>,
 }
 
 impl MethodAttrs {
@@ -45,6 +30,10 @@ impl MethodAttrs {
             bail!(attr, err);
         }
         Ok(())
+    }
+
+    pub(crate) fn send(&self) -> bool {
+        self.send.is_some()
     }
 
     pub(crate) fn try_sync(&self) -> bool {
@@ -63,11 +52,13 @@ pub(crate) fn parse_method_attrs(method: &mut TraitItemFn) -> syn::Result<Method
     let mut attrs = MethodAttrs::default();
     for attr in (method.attrs).extract_if(.., |attr| attr.path().is_ident("dyn_utils")) {
         attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("try_sync") {
-                attrs.try_sync = Some(meta.path.clone());
+            if meta.path.is_ident("Send") {
+                attrs.send = Some(meta.path.clone())
             } else if meta.path.is_ident("storage") {
                 meta.input.parse::<Token![=]>()?;
                 attrs.storage = Some((meta.path, meta.input.parse()?));
+            } else if meta.path.is_ident("try_sync") {
+                attrs.try_sync = Some(meta.path.clone());
             } else {
                 bail!(meta.path, "unknown attribute");
             }
@@ -75,6 +66,33 @@ pub(crate) fn parse_method_attrs(method: &mut TraitItemFn) -> syn::Result<Method
         })?;
     }
     Ok(attrs)
+}
+
+pub(crate) fn handle_async_method(
+    method: &mut TraitItemFn,
+    attrs: &MethodAttrs,
+) -> syn::Result<()> {
+    if method.sig.asyncness.is_some() {
+        method.sig.asyncness = None;
+        let output = return_type(method).map_or_else(|| quote!(()), ToTokens::to_token_stream);
+        let send_bound = attrs.send.as_ref().map(|_| quote!(+ Send));
+        method.sig.output = parse_quote!(-> impl Future<Output = #output> #send_bound);
+        if let Some(default) = &mut method.default {
+            let stmts = &default.stmts;
+            *default = parse_quote!({async move { #(#stmts)* }});
+        }
+    } else if let Some(attr) = &attrs.send {
+        bail!(attr, "`Send` bound is only supported for async fn");
+    }
+    Ok(())
+}
+
+pub(crate) fn is_dispatchable(method: &TraitItemFn) -> bool {
+    let has_dyn_trait_receiver =
+        (method.sig.receiver()).is_some_and(|recv| recv.reference.is_some() || is_pinned(&recv.ty));
+    let has_no_generic_parameter_except_lifetime =
+        (method.sig.generics.params.iter()).all(|p| matches!(p, GenericParam::Lifetime(_)));
+    has_dyn_trait_receiver && has_no_generic_parameter_except_lifetime
 }
 
 pub(crate) fn dyn_method(
@@ -96,9 +114,14 @@ pub(crate) fn dyn_method(
             .collect(),
     };
     let mut method = method.clone();
+    // Because even precise capture must capture `Self`, so its lifetime is bound
+    (method.sig.generics)
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!(Self: '__dyn));
     (method.sig.generics.params.iter_mut())
         .for_each(|param| captured.visit_generic_param_mut(param));
-    method.sig.generics.params.push(parse_quote!('__dyn));
+    method.sig.generics.params.insert(0, parse_quote!('__dyn));
     (method.sig.inputs.iter_mut()).for_each(|arg| captured.visit_fn_arg_mut(arg));
     method.sig.output = parse_quote!(-> ::dyn_utils::DynStorage<#dyn_ret, #storage>);
     method
@@ -114,17 +137,12 @@ fn forward_call(method: &Ident, args: &Punctuated<FnArg, Token![,]>) -> TokenStr
 
 pub(crate) fn impl_method(dyn_method: &TraitItemFn, dyn_storage: bool) -> ImplItemFn {
     let call = forward_call(&dyn_method.sig.ident, &dyn_method.sig.inputs);
-    ImplItemFn {
-        attrs: vec![],
-        vis: Visibility::Inherited,
-        defaultness: None,
-        sig: dyn_method.sig.clone(),
-        block: if dyn_storage {
-            parse_quote!({ ::dyn_utils::DynStorage::new(#call) })
-        } else {
-            parse_quote!({ #call })
-        },
-    }
+    let block = if dyn_storage {
+        parse_quote!({ ::dyn_utils::DynStorage::new(#call) })
+    } else {
+        parse_quote!({ #call })
+    };
+    to_impl_method(dyn_method, block)
 }
 
 pub(crate) fn sync_method(method: &TraitItemFn, ret: &TypeImplTrait) -> syn::Result<TraitItemFn> {

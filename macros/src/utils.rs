@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
 use syn::{
-    CapturedParam, GenericArgument, GenericParam, Generics, Lifetime, LifetimeParam, PathArguments,
-    Receiver, ReturnType, TraitItemFn, Type, TypeImplTrait, TypeParamBound, TypeReference,
-    parse_quote, visit_mut::VisitMut,
+    Block, CapturedParam, GenericArgument, GenericParam, Generics, ImplItemFn, Lifetime,
+    LifetimeParam, PathArguments, Receiver, ReturnType, TraitItemFn, Type, TypeImplTrait,
+    TypeParamBound, TypeReference, Visibility, parse_quote, visit_mut::VisitMut,
 };
 
 use crate::macros::try_match;
@@ -25,6 +25,16 @@ pub(crate) fn future_output(ret: &TypeImplTrait) -> Option<&Type> {
         .filter_map(try_match!(GenericArgument::AssocType))
         .find(|t| t.ident == "Output")?;
     Some(&output.ty)
+}
+
+pub(crate) fn to_impl_method(method: &TraitItemFn, block: Block) -> ImplItemFn {
+    ImplItemFn {
+        attrs: vec![],
+        vis: Visibility::Inherited,
+        defaultness: None,
+        sig: method.sig.clone(),
+        block,
+    }
 }
 
 pub struct CapturedLifetimes {

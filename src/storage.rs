@@ -244,34 +244,14 @@ mod tests {
 
     use elain::{Align, Alignment};
 
-    use crate::{
-        DynStorage,
-        private::{DynTrait, DynVTable, NewVTable, StorageVTable},
-        storage::Storage,
-    };
+    use crate::{DynStorage, storage::Storage};
 
-    type TestStorage<S> = DynStorage<dyn Test, S>;
+    #[crate::dyn_storage(crate = crate)]
     trait Test {}
-    impl DynTrait for dyn Test {
-        type VTable = TestVTable;
-    }
-    struct TestVTable {
-        dyn_vtable: DynVTable,
-    }
-    impl StorageVTable for TestVTable {
-        fn dyn_vtable(&self) -> &DynVTable {
-            &self.dyn_vtable
-        }
-    }
-    unsafe impl<T> NewVTable<T> for dyn Test {
-        fn new_vtable<S: Storage>() -> &'static Self::VTable {
-            &const {
-                TestVTable {
-                    dyn_vtable: DynVTable::new::<T>(),
-                }
-            }
-        }
-    }
+    impl Test for () {}
+    impl<const N: usize> Test for [u8; N] {}
+    impl Test for u64 {}
+    type TestStorage<'__dyn, S> = DynStorage<dyn Test + '__dyn, S>;
 
     #[test]
     fn raw_alignment() {
@@ -316,6 +296,7 @@ mod tests {
     }
 
     struct SetDropped<'a>(&'a mut bool);
+    impl Test for SetDropped<'_> {}
     impl Drop for SetDropped<'_> {
         fn drop(&mut self) {
             assert!(!mem::replace(self.0, true));
