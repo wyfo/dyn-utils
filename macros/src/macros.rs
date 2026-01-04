@@ -23,3 +23,35 @@ macro_rules! bail {
     };
 }
 pub(crate) use bail;
+
+// Because nightly doesn't give the same span for `method`
+macro_rules! bail_method {
+    ($method:expr, $err:expr) => {
+        crate::macros::bail!($method.sig.fn_token, $err)
+    };
+}
+pub(crate) use bail_method;
+
+macro_rules! fields {
+    ($obj:expr => $($field:ident),* $(,)?) => {$(
+        let $field = &$obj.$field;
+    )*};
+}
+pub(crate) use fields;
+
+macro_rules! macro_impl {
+    ($impl_fn:path, $item:ident as $item_ty:ty $(,$args:ident as $args_ty:ty)? $(,)?) => {
+        $impl_fn(
+            syn::parse_macro_input!($item as $item_ty),
+            $({
+                let mut __args = <$args_ty>::new();
+                let args_parser = syn::meta::parser(|m| __args.parse_meta(m));
+                parse_macro_input!($args with args_parser);
+                __args
+            })?
+        )
+        .unwrap_or_else(|err| err.to_compile_error())
+        .into()
+    };
+}
+pub(crate) use macro_impl;

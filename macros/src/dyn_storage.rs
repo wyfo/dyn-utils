@@ -1,29 +1,58 @@
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use syn::{
-    FnArg, GenericParam, ItemTrait, Path, PathSegment, Token, TraitItem, TraitItemFn, parse_quote,
-    punctuated::Punctuated, visit_mut, visit_mut::VisitMut,
+    FnArg, GenericParam, ItemTrait, Path, PathSegment, Token, TraitItem, TraitItemFn,
+    meta::ParseNestedMeta, parse_quote, punctuated::Punctuated, visit_mut, visit_mut::VisitMut,
 };
 
 use crate::{
     macros::{bail, try_match},
-    methods::is_dispatchable,
-    utils::{IteratorExt, fn_args, respan, to_impl_method},
+    utils::{IteratorExt, fn_args, impl_method, is_dispatchable, last_segments, respan},
 };
 
-pub fn dyn_storage_impl(
-    r#trait: ItemTrait,
-    remote: Option<Path>,
+pub(super) struct DynStorageOpts {
+    dyn_utils: Path,
     bounds: Punctuated<Path, Token![+]>,
-    crate_path: Path,
+    remote: Option<Path>,
+}
+
+impl DynStorageOpts {
+    pub(super) fn new() -> Self {
+        Self {
+            dyn_utils: parse_quote!(::dyn_utils),
+            bounds: Punctuated::new(),
+            remote: None,
+        }
+    }
+
+    pub(super) fn parse_meta(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
+        if meta.path.is_ident("bounds") {
+            meta.input.parse::<Token![=]>()?;
+            self.bounds = Punctuated::parse_terminated(meta.input)?;
+        } else if meta.path.is_ident("crate") {
+            meta.input.parse::<Token![=]>()?;
+            self.dyn_utils = meta.input.parse()?;
+        } else if meta.path.is_ident("remote") {
+            meta.input.parse::<Token![=]>()?;
+            self.remote = Some(meta.input.parse()?);
+        } else {
+            bail!(meta.path, "unknown attribute");
+        }
+        Ok(())
+    }
+}
+
+pub(super) fn dyn_storage_impl(
+    r#trait: ItemTrait,
+    opts: DynStorageOpts,
 ) -> syn::Result<TokenStream> {
+    let DynStorageOpts {
+        bounds,
+        dyn_utils,
+        remote,
+    } = opts;
     let include_trait = remote.is_none()
-        || r#trait.attrs.iter().any(|attr| {
-            attr.path()
-                .segments
-                .last()
-                .is_some_and(|s| s.ident == "dyn_storage")
-        });
+        || (r#trait.attrs.iter()).any(|attr| last_segments(attr.path(), "dyn_storage").is_some());
     let remote = remote.unwrap_or_else(|| r#trait.ident.clone().into());
     let (_, trait_generics, where_clause) = r#trait.generics.split_for_impl();
     let remote_with_args = quote!(#remote #trait_generics);
@@ -114,7 +143,7 @@ pub fn dyn_storage_impl(
         let block = parse_quote!({ unsafe {
             ::core::mem::transmute::<unsafe fn(), #method_sig>(self.vtable().#method_name)(self.#self_as(), #(#args,)*)
         } });
-        to_impl_method(method, block)
+        impl_method(method.sig.clone(), block)
     });
     let type_impls = types.iter().map(|(ty_arg, ty)| {
         let ty_name = &ty.ident;
@@ -131,7 +160,7 @@ pub fn dyn_storage_impl(
                 #(#method_names: unsafe fn()),*
             }
 
-            impl<#(#generics,)*> #crate_path::private::DynTrait for dyn #dyn_trait #where_clause {
+            impl<#(#generics,)*> #dyn_utils::private::DynTrait for dyn #dyn_trait #where_clause {
                 type VTable = __VTable;
                 fn drop_in_place(vtable: &Self::VTable) -> Option<unsafe fn(core::ptr::NonNull<()>)> {
                     vtable.__drop_in_place
@@ -141,10 +170,10 @@ pub fn dyn_storage_impl(
                 }
             }
 
-            unsafe impl<#(#generics,)* __Dyn: #dyn_trait> #crate_path::private::NewVTable<__Dyn>
+            unsafe impl<#(#generics,)* __Dyn: #dyn_trait> #dyn_utils::private::NewVTable<__Dyn>
                 for dyn #dyn_trait #where_clause
             {
-                fn new_vtable<__Storage: #crate_path::storage::Storage>() -> &'static Self::VTable {
+                fn new_vtable<__Storage: #dyn_utils::storage::Storage>() -> &'static Self::VTable {
                     &const {
                         __VTable {
                             __drop_in_place: if core::mem::needs_drop::<__Dyn>() {
@@ -159,8 +188,8 @@ pub fn dyn_storage_impl(
                 }
             }
 
-            impl<#(#generics,)* __Storage: #crate_path::storage::Storage> #remote_with_args
-                for #crate_path::DynStorage<dyn #dyn_trait, __Storage> #where_clause
+            impl<#(#generics,)* __Storage: #dyn_utils::storage::Storage> #remote_with_args
+                for #dyn_utils::DynStorage<dyn #dyn_trait, __Storage> #where_clause
             {
                 #(#type_impls)*
                 #(#method_impls)*
