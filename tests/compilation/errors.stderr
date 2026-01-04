@@ -1,26 +1,26 @@
 error: unexpected token in nested attribute, expected ident
- --> tests/compilation/errors.rs:1:29
+ --> tests/compilation/errors.rs:1:24
   |
-1 | #[dyn_utils::dyn_compatible(.)]
-  |                             ^
+1 | #[dyn_utils::dyn_trait(.)]
+  |                        ^
 
 error: expected this path to be an identifier
- --> tests/compilation/errors.rs:6:29
+ --> tests/compilation/errors.rs:6:24
   |
-6 | #[dyn_utils::dyn_compatible(path::Rename)]
-  |                             ^^^^^^^^^^^^
+6 | #[dyn_utils::dyn_trait(path::Rename)]
+  |                        ^^^^^^^^^^^^
 
 error: expected `=`
-  --> tests/compilation/errors.rs:11:35
+  --> tests/compilation/errors.rs:11:30
    |
-11 | #[dyn_utils::dyn_compatible(remote(trait))]
-   |                                   ^
+11 | #[dyn_utils::dyn_trait(remote(trait))]
+   |                              ^
 
 error: expected identifier
-  --> tests/compilation/errors.rs:16:38
+  --> tests/compilation/errors.rs:16:33
    |
-16 | #[dyn_utils::dyn_compatible(remote = ?)]
-   |                                      ^
+16 | #[dyn_utils::dyn_trait(remote = ?)]
+   |                                 ^
 
 error: attribute must be used on a method with Return Position Impl Trait
   --> tests/compilation/errors.rs:23:17
