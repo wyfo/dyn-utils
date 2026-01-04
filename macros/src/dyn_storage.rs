@@ -1,12 +1,13 @@
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use syn::{
-    FnArg, GenericParam, ItemTrait, Path, PathSegment, Token, TraitItem, TraitItemFn,
-    meta::ParseNestedMeta, parse_quote, punctuated::Punctuated, visit_mut, visit_mut::VisitMut,
+    FnArg, GenericParam, ImplItemFn, ItemTrait, Path, PathSegment, Token, TraitItem, TraitItemFn,
+    TraitItemType, meta::ParseNestedMeta, parse_quote, punctuated::Punctuated, visit_mut,
+    visit_mut::VisitMut,
 };
 
 use crate::{
-    macros::{bail, try_match},
+    macros::{bail, bail_method, fields, try_match},
     utils::{IteratorExt, fn_args, impl_method, is_dispatchable, last_segments, respan},
 };
 
@@ -46,118 +47,44 @@ pub(super) fn dyn_storage_impl(
     r#trait: ItemTrait,
     opts: DynStorageOpts,
 ) -> syn::Result<TokenStream> {
-    let DynStorageOpts {
-        bounds,
-        dyn_utils,
-        remote,
-    } = opts;
-    let include_trait = remote.is_none()
-        || (r#trait.attrs.iter()).any(|attr| last_segments(attr.path(), "dyn_storage").is_some());
-    let remote = remote.unwrap_or_else(|| r#trait.ident.clone().into());
-    let (_, trait_generics, where_clause) = r#trait.generics.split_for_impl();
-    let remote_with_args = quote!(#remote #trait_generics);
-    let mut methods = Vec::new();
-    let mut types = Vec::new();
+    let mut dyn_storage = DynStorage::new(&r#trait, opts);
     for item in r#trait.items.iter() {
         match item {
             TraitItem::Fn(method) => {
                 if !is_dispatchable(method) {
-                    bail!(method.sig.fn_token, "method is not dispatchable");
+                    bail_method!(method, "method is not dispatchable");
                 }
-                methods.push(method);
+                dyn_storage.methods.push(method);
             }
             TraitItem::Type(ty) => {
                 if !ty.generics.params.is_empty() {
                     bail!(ty.ident, "generic associated type is not supported");
                 }
-                types.push((format_ident!("__Type{}", ty.ident), ty));
+                let gen_param = format_ident!("__Type{}", ty.ident);
+                dyn_storage.types.push((gen_param, ty));
             }
             _ => bail!(item, "unsupported item"),
         }
     }
-    let dyn_trait_args = r#trait
-        .generics
-        .params
-        .iter()
-        .map(|param| match param {
-            GenericParam::Lifetime(p) => p.lifetime.to_token_stream(),
-            GenericParam::Type(p) => p.ident.to_token_stream(),
-            GenericParam::Const(p) => p.ident.to_token_stream(),
-        })
-        .chain(types.iter().map(|(ty_arg, ty)| {
-            let ty_name = &ty.ident;
-            quote!(#ty_name = #ty_arg)
-        }));
-    let mut dyn_trait = quote!(#remote<#(#dyn_trait_args,)*> + '__lt);
-    if !bounds.is_empty() {
-        dyn_trait.extend(quote!(+ #bounds));
-    }
-    let mut generics = r#trait.generics.params.iter().cloned().collect_vec();
-    generics.iter_mut().for_each(|param| match param {
-        GenericParam::Lifetime(_) => {}
-        GenericParam::Type(p) => p.default = None,
-        GenericParam::Const(p) => p.default = None,
-    });
-    generics.insert(0, parse_quote!('__lt));
-    generics.extend(types.iter().map(|(ty_arg, ty)| -> GenericParam {
-        let bounds = &ty.bounds;
-        // https://github.com/dtolnay/syn/issues/1952
-        if bounds.is_empty() {
-            parse_quote!(#ty_arg)
-        } else {
-            parse_quote!(#ty_arg: #bounds)
-        }
-    }));
-    let method_names = methods.iter().map(|method| method.sig.ident.clone());
-    let vtable_methods = methods.iter().map(|method| {
-        let method_name = &method.sig.ident;
-        let args = fn_args(&method.sig).skip(1).collect_vec();
-        let erased_args = args.iter().map(|arg| quote!(::core::mem::transmute(#arg)));
-        let self_as = match VTableReceiver::new(method) {
-            VTableReceiver::Ref => quote!(as_ref),
-            VTableReceiver::Mut => quote!(as_mut),
-            VTableReceiver::Pinned => quote!(as_pinned_mut),
-        };
-        let method_sig = vtable_method_signature(method, true);
-        quote! {
-            #[allow(clippy::useless_transmute)]
-            #method_name: unsafe {
-                ::core::mem::transmute::<#method_sig ,unsafe fn()>(
-                    // transmute to erase lifetime
-                    |__self, #(#args,)*| ::core::mem::transmute(
-                        __Dyn::#method_name(__self.#self_as(), #(#erased_args,)*)
-                    )
-                )
-            }
-        }
-    });
-    let method_impls = methods.iter().map(|method| {
-        let method_name = &method.sig.ident;
-        let self_as = match VTableReceiver::new(method) {
-            VTableReceiver::Ref => quote!(inner),
-            VTableReceiver::Mut => quote!(inner_mut),
-            VTableReceiver::Pinned => quote!(inner_pinned_mut),
-        };
-        let args = fn_args(&method.sig).skip(1);
-        let method_sig = vtable_method_signature(method, false);
-        let block = parse_quote!({ unsafe {
-            ::core::mem::transmute::<unsafe fn(), #method_sig>(self.vtable().#method_name)(self.#self_as(), #(#args,)*)
-        } });
-        impl_method(method.sig.clone(), block)
-    });
-    let type_impls = types.iter().map(|(ty_arg, ty)| {
-        let ty_name = &ty.ident;
-        quote!(type #ty_name = #ty_arg;)
-    });
-    let r#trait = include_trait.then_some(&r#trait);
+    fields!(dyn_storage => dyn_utils, remote);
+    let dyn_trait = dyn_storage.dyn_trait();
+    let generics = dyn_storage.generics();
+    let vtable_fields = (dyn_storage.methods.iter()).map(|m| dyn_storage.vtable_field(m));
+    let vtable_methods = (dyn_storage.methods.iter()).map(|m| dyn_storage.vtable_method(m));
+    let impl_methods = (dyn_storage.methods.iter()).map(|m| dyn_storage.impl_method(m));
+    let impl_types = (dyn_storage.types.iter()).map(|t| dyn_storage.impl_type(t));
+    let (_, ty_gen, where_clause) = r#trait.generics.split_for_impl();
+    let remote_with_args = quote!(#remote #ty_gen);
+    let opt_trait = dyn_storage.include_trait.then_some(&r#trait);
     Ok(quote! {
-        #r#trait
+        #opt_trait
+
         const _: () = {
             #[derive(Debug)]
             pub struct __VTable {
                 __drop_in_place: Option<unsafe fn(::core::ptr::NonNull<()>)>,
                 __layout: ::core::alloc::Layout,
-                #(#method_names: unsafe fn()),*
+                #(#vtable_fields,)*
             }
 
             impl<#(#generics,)*> #dyn_utils::private::DynTrait for dyn #dyn_trait #where_clause {
@@ -191,11 +118,127 @@ pub(super) fn dyn_storage_impl(
             impl<#(#generics,)* __Storage: #dyn_utils::storage::Storage> #remote_with_args
                 for #dyn_utils::DynStorage<dyn #dyn_trait, __Storage> #where_clause
             {
-                #(#type_impls)*
-                #(#method_impls)*
+                #(#impl_types)*
+                #(#impl_methods)*
             }
         };
     })
+}
+
+struct DynStorage<'a> {
+    r#trait: &'a ItemTrait,
+    include_trait: bool,
+    dyn_utils: Path,
+    remote: Path,
+    bounds: Punctuated<Path, Token![+]>,
+    types: Vec<(Ident, &'a TraitItemType)>,
+    methods: Vec<&'a TraitItemFn>,
+}
+
+impl<'a> DynStorage<'a> {
+    fn new(r#trait: &'a ItemTrait, opts: DynStorageOpts) -> Self {
+        let has_dyn_storage_attr = || {
+            (r#trait.attrs.iter()).any(|attr| last_segments(attr.path(), "dyn_storage").is_some())
+        };
+        Self {
+            r#trait,
+            include_trait: opts.remote.is_none() || has_dyn_storage_attr(),
+            dyn_utils: opts.dyn_utils,
+            remote: opts.remote.unwrap_or_else(|| r#trait.ident.clone().into()),
+            bounds: opts.bounds,
+            types: Vec::new(),
+            methods: Vec::new(),
+        }
+    }
+
+    fn dyn_trait(&self) -> TokenStream {
+        let dyn_trait_args = (self.r#trait.generics.params.iter())
+            .map(|param| match param {
+                GenericParam::Lifetime(p) => p.lifetime.to_token_stream(),
+                GenericParam::Type(p) => p.ident.to_token_stream(),
+                GenericParam::Const(p) => p.ident.to_token_stream(),
+            })
+            .chain(self.types.iter().map(|(ty_arg, ty)| {
+                let ty_name = &ty.ident;
+                quote!(#ty_name = #ty_arg)
+            }));
+        fields!(self => bounds, remote);
+        let mut dyn_trait = quote!(#remote<#(#dyn_trait_args,)*> + '__lt);
+        if !bounds.is_empty() {
+            dyn_trait.extend(quote!(+ #bounds));
+        }
+        dyn_trait
+    }
+
+    fn generics(&self) -> Vec<GenericParam> {
+        let mut generics = self.r#trait.generics.params.iter().cloned().collect_vec();
+        generics.iter_mut().for_each(|param| match param {
+            GenericParam::Lifetime(_) => {}
+            GenericParam::Type(p) => p.default = None,
+            GenericParam::Const(p) => p.default = None,
+        });
+        generics.insert(0, parse_quote!('__lt));
+        generics.extend(self.types.iter().map(|(ty_arg, ty)| -> GenericParam {
+            let bounds = &ty.bounds;
+            // https://github.com/dtolnay/syn/issues/1952
+            if bounds.is_empty() {
+                parse_quote!(#ty_arg)
+            } else {
+                parse_quote!(#ty_arg: #bounds)
+            }
+        }));
+        generics
+    }
+
+    fn vtable_field(&self, method: &TraitItemFn) -> TokenStream {
+        let method_name = &method.sig.ident;
+        quote!(#method_name: unsafe fn())
+    }
+
+    fn vtable_method(&self, method: &TraitItemFn) -> TokenStream {
+        let method_name = &method.sig.ident;
+        let args = fn_args(&method.sig).skip(1).collect_vec();
+        let erased_args = args.iter().map(|arg| quote!(::core::mem::transmute(#arg)));
+        let self_as = match VTableReceiver::new(method) {
+            VTableReceiver::Ref => quote!(as_ref),
+            VTableReceiver::Mut => quote!(as_mut),
+            VTableReceiver::Pinned => quote!(as_pinned_mut),
+        };
+        let fn_ptr = vtable_fn_pointer(method, true);
+        quote! {
+            #[allow(clippy::useless_transmute)]
+            #method_name: unsafe {
+                ::core::mem::transmute::<#fn_ptr ,unsafe fn()>(
+                    // transmute to erase lifetime
+                    |__self, #(#args,)*| ::core::mem::transmute(
+                        __Dyn::#method_name(__self.#self_as(), #(#erased_args,)*)
+                    )
+                )
+            }
+        }
+    }
+
+    fn impl_method(&self, method: &TraitItemFn) -> ImplItemFn {
+        let method_name = &method.sig.ident;
+        let self_as = match VTableReceiver::new(method) {
+            VTableReceiver::Ref => quote!(inner),
+            VTableReceiver::Mut => quote!(inner_mut),
+            VTableReceiver::Pinned => quote!(inner_pinned_mut),
+        };
+        let args = fn_args(&method.sig).skip(1);
+        let fn_ptr = vtable_fn_pointer(method, false);
+        let block = parse_quote!({ unsafe {
+            ::core::mem::transmute::<unsafe fn(), #fn_ptr>(self.vtable().#method_name)(
+                self.#self_as(), #(#args,)*
+            )
+        } });
+        impl_method(method.sig.clone(), block)
+    }
+
+    fn impl_type(&self, (ty_param, ty): &(Ident, &TraitItemType)) -> TokenStream {
+        let ty_name = &ty.ident;
+        quote!(type #ty_name = #ty_param;)
+    }
 }
 
 enum VTableReceiver {
@@ -228,7 +271,7 @@ impl VisitMut for ReplaceSelfWithDyn {
     }
 }
 
-fn vtable_method_signature(method: &TraitItemFn, new_vtable: bool) -> TokenStream {
+fn vtable_fn_pointer(method: &TraitItemFn, new_vtable: bool) -> TokenStream {
     let unsafety = &method.sig.unsafety;
     // We don't care about self lifetime because it is erased anyway
     let storage = match VTableReceiver::new(method) {

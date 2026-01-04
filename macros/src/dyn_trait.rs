@@ -61,6 +61,7 @@ pub(super) fn dyn_trait_impl(
     opts: DynTraitOpts,
 ) -> syn::Result<TokenStream> {
     let mut dyn_trait = DynTrait::new(&r#trait, opts);
+    let dyn_trait_attrs = extract_dyn_trait_attrs(&mut r#trait)?;
     for item in r#trait.items.iter_mut() {
         match item {
             TraitItem::Type(ty) if is_not_generic(ty) => {
@@ -72,12 +73,36 @@ pub(super) fn dyn_trait_impl(
             _ => {}
         }
     }
-    dyn_trait.quote(r#trait)
+    r#trait.items.extend(dyn_trait.additional_trait_items);
+
+    let opt_trait = dyn_trait.include_trait.then_some(&r#trait);
+    fields!(dyn_trait => remote, dyn_trait_name, dyn_items, impl_items);
+    fields!(r#trait => ident, unsafety, vis, supertraits);
+    let (_, trait_ty_gen, where_clause) = r#trait.generics.split_for_impl();
+    let dyn_param = parse_quote!(__Dyn: #remote #trait_ty_gen);
+
+    let mut dyn_generics = r#trait.generics.clone();
+    dyn_generics.params.extend(dyn_trait.generic_storages);
+    let mut impl_generics = dyn_generics.clone();
+    impl_generics.params.push(dyn_param);
+    let (_, dyn_ty_gen, _) = dyn_generics.split_for_impl();
+    let (impl_impl_gen, _, _) = impl_generics.split_for_impl();
+
+    Ok(quote! {
+        #opt_trait
+
+        #[doc = "Dyn-compatible implementation of"]
+        #[doc = ::core::concat!("[`", stringify!(#ident), "`](", stringify!(#remote), ").")]
+        #(#dyn_trait_attrs)*
+        #vis #unsafety trait #dyn_trait_name #dyn_generics #supertraits #where_clause { #(#dyn_items)* }
+
+        #unsafety impl #impl_impl_gen #dyn_trait_name #dyn_ty_gen for __Dyn #where_clause { #(#impl_items)* }
+    })
 }
 
 struct DynTrait {
     include_trait: bool,
-    dyn_trait: Ident,
+    dyn_trait_name: Ident,
     dyn_utils: Path,
     remote: Path,
     additional_trait_items: Vec<TraitItem>,
@@ -91,7 +116,7 @@ impl DynTrait {
         let dyn_trait = opts.dyn_trait.replace("{}", &r#trait.ident.to_string());
         Self {
             include_trait: opts.remote.is_none(),
-            dyn_trait: format_ident!("{dyn_trait}"),
+            dyn_trait_name: format_ident!("{dyn_trait}"),
             dyn_utils: opts.dyn_utils,
             remote: opts.remote.unwrap_or_else(|| r#trait.ident.clone().into()),
             additional_trait_items: Vec::new(),
@@ -126,35 +151,6 @@ impl DynTrait {
         self.impl_items.push(dyn_method.impl_method().into());
         self.dyn_items.push(dyn_method.dyn_method.into());
         Ok(())
-    }
-
-    fn quote(self, mut r#trait: ItemTrait) -> syn::Result<TokenStream> {
-        let dyn_trait_attrs = extract_dyn_trait_attrs(&mut r#trait)?;
-        r#trait.items.extend(self.additional_trait_items);
-
-        fields!(self => remote, dyn_trait, dyn_items, impl_items);
-        fields!(r#trait => ident, unsafety, vis, supertraits);
-        let opt_trait = self.include_trait.then_some(&r#trait);
-        let (_, trait_ty_gen, where_clause) = r#trait.generics.split_for_impl();
-        let dyn_param = parse_quote!(__Dyn: #remote #trait_ty_gen);
-
-        let mut dyn_generics = r#trait.generics.clone();
-        dyn_generics.params.extend(self.generic_storages);
-        let mut impl_generics = dyn_generics.clone();
-        impl_generics.params.push(dyn_param);
-        let (_, dyn_ty_gen, _) = dyn_generics.split_for_impl();
-        let (impl_impl_gen, _, _) = impl_generics.split_for_impl();
-
-        Ok(quote! {
-            #opt_trait
-
-            #[doc = "Dyn-compatible implementation of"]
-            #[doc = ::core::concat!("[`", stringify!(#ident), "`](", stringify!(#remote), ").")]
-            #(#dyn_trait_attrs)*
-            #vis #unsafety trait #dyn_trait #dyn_generics #supertraits #where_clause { #(#dyn_items)* }
-
-            #unsafety impl #impl_impl_gen #dyn_trait #dyn_ty_gen for __Dyn #where_clause { #(#impl_items)* }
-        })
     }
 }
 

@@ -1,86 +1,90 @@
-error: unexpected token in nested attribute, expected ident
+error: unknown attribute
  --> tests/compilation/errors.rs:1:24
   |
-1 | #[dyn_utils::dyn_trait(.)]
-  |                        ^
-
-error: expected this path to be an identifier
- --> tests/compilation/errors.rs:6:24
-  |
-6 | #[dyn_utils::dyn_trait(path::Rename)]
-  |                        ^^^^^^^^^^^^
+1 | #[dyn_utils::dyn_trait(unknown)]
+  |                        ^^^^^^^
 
 error: expected `=`
-  --> tests/compilation/errors.rs:11:30
+ --> tests/compilation/errors.rs:6:1
+  |
+6 | #[dyn_utils::dyn_trait(trait)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `dyn_utils::dyn_trait` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: invalid trait name
+  --> tests/compilation/errors.rs:11:32
    |
-11 | #[dyn_utils::dyn_trait(remote(trait))]
-   |                              ^
+11 | #[dyn_utils::dyn_trait(trait = ?)]
+   |                                ^
+
+error: expected `=`
+  --> tests/compilation/errors.rs:16:1
+   |
+16 | #[dyn_utils::dyn_trait(remote)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the attribute macro `dyn_utils::dyn_trait` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error: expected identifier
-  --> tests/compilation/errors.rs:16:33
+  --> tests/compilation/errors.rs:21:33
    |
-16 | #[dyn_utils::dyn_trait(remote = ?)]
+21 | #[dyn_utils::dyn_trait(remote = ?)]
    |                                 ^
 
 error: attribute must be used on a method with Return Position Impl Trait
-  --> tests/compilation/errors.rs:23:17
+  --> tests/compilation/errors.rs:28:7
    |
-23 |     #[dyn_trait(storage = dyn_utils::DefaultStorage)]
-   |                 ^^^^^^^
+28 |     #[dyn_trait()]
+   |       ^^^^^^^^^
 
 error: expected `=`
-  --> tests/compilation/errors.rs:29:24
+  --> tests/compilation/errors.rs:34:24
    |
-29 |     #[dyn_trait(storage(dyn_utils::DefaultStorage))]
+34 |     #[dyn_trait(storage)]
    |                        ^
 
 error: expected identifier
-  --> tests/compilation/errors.rs:35:27
+  --> tests/compilation/errors.rs:40:27
    |
-35 |     #[dyn_trait(storage = ?)]
+40 |     #[dyn_trait(storage = ?)]
    |                           ^
 
+error: `try_sync` must be used on async methods
+  --> tests/compilation/errors.rs:47:5
+   |
+47 |     fn method(&self) -> impl Iterator<Item = ()>;
+   |     ^^
+
+error: `try_sync` must be used on async methods
+  --> tests/compilation/errors.rs:53:5
+   |
+53 |     fn method(&self) -> impl Future;
+   |     ^^
+
+error: `try_sync` must be used on async methods
+  --> tests/compilation/errors.rs:59:5
+   |
+59 |     fn method(&self) -> impl Future<Item = ()>;
+   |     ^^
+
 error: attribute must be used on a method with Return Position Impl Trait
-  --> tests/compilation/errors.rs:41:17
+  --> tests/compilation/errors.rs:64:7
    |
-41 |     #[dyn_trait(try_sync)]
-   |                 ^^^^^^^^
-
-error: `try_sync` must be used on async methods
-  --> tests/compilation/errors.rs:48:5
-   |
-48 |     fn method(&self) -> impl Iterator<Item = ()>;
-   |     ^^
-
-error: `try_sync` must be used on async methods
-  --> tests/compilation/errors.rs:54:5
-   |
-54 |     fn method(&self) -> impl Future;
-   |     ^^
-
-error: `try_sync` must be used on async methods
-  --> tests/compilation/errors.rs:60:5
-   |
-60 |     fn method(&self) -> impl Future<Item = ()>;
-   |     ^^
-
-error: unknown attribute
-  --> tests/compilation/errors.rs:65:17
-   |
-65 |     #[dyn_trait(unknown)]
-   |                 ^^^^^^^
+64 |     #[dyn_trait(unknown)]
+   |       ^^^^^^^^^
 
 error: `dyn_utils::sync` must be used on async method
-  --> tests/compilation/errors.rs:75:5
+  --> tests/compilation/errors.rs:74:5
    |
-75 |     fn method(&self) {}
+74 |     fn method(&self) {}
    |     ^^
 
 error[E0046]: not all trait items implemented, missing: `method`
-  --> tests/compilation/errors.rs:73:1
+  --> tests/compilation/errors.rs:72:1
    |
-70 |     fn method(&self);
+69 |     fn method(&self);
    |     ----------------- `method` from trait
 ...
-73 | impl SyncOnSyncMethod for () {
+72 | impl SyncOnSyncMethod for () {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `method` in implementation

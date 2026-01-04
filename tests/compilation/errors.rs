@@ -1,14 +1,19 @@
-#[dyn_utils::dyn_trait(.)]
+#[dyn_utils::dyn_trait(unknown)]
+trait UnknownAttribute {
+    fn method(&self);
+}
+
+#[dyn_utils::dyn_trait(trait)]
+trait RenameWithoutEqual {
+    fn method(&self);
+}
+
+#[dyn_utils::dyn_trait(trait = ?)]
 trait InvalidRename {
     fn method(&self);
 }
 
-#[dyn_utils::dyn_trait(path::Rename)]
-trait RenamePath {
-    fn method(&self);
-}
-
-#[dyn_utils::dyn_trait(remote(trait))]
+#[dyn_utils::dyn_trait(remote)]
 trait RemoteWithoutEqual {
     fn method(&self);
 }
@@ -19,27 +24,21 @@ trait InvalidRemote {
 }
 
 #[dyn_utils::dyn_trait]
-trait StorageOnNormalMethod {
-    #[dyn_trait(storage = dyn_utils::DefaultStorage)]
+trait AttributeOnNormalMethod {
+    #[dyn_trait()]
     fn method(&self);
 }
 
 #[dyn_utils::dyn_trait]
 trait StorageWithoutEqual {
-    #[dyn_trait(storage(dyn_utils::DefaultStorage))]
-    fn method(&self);
+    #[dyn_trait(storage)]
+    async fn method(&self);
 }
 
 #[dyn_utils::dyn_trait]
 trait InvalidStorage {
     #[dyn_trait(storage = ?)]
-    fn method(&self);
-}
-
-#[dyn_utils::dyn_trait]
-trait TrySyncOnNormalMethod {
-    #[dyn_trait(try_sync)]
-    fn method(&self);
+    async fn method(&self);
 }
 
 #[dyn_utils::dyn_trait]
@@ -80,7 +79,7 @@ macro_rules! nothing {
 }
 
 // TODO Only for coverage, and I don't know why
-#[dyn_utils::dyn_trait(Dyn)]
+#[dyn_utils::dyn_trait(trait = Dyn)]
 trait ForCoverage {
     type Result;
     fn method(&self) -> Self::Result;
