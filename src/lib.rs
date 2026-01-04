@@ -67,6 +67,21 @@ impl<S: Storage, Dyn: private::DynTrait + ?Sized> DynStorage<Dyn, S> {
     pub fn inner_pinned_mut(self: Pin<&mut Self>) -> Pin<&mut S> {
         unsafe { self.map_unchecked_mut(|this| &mut this.inner) }
     }
+
+    pub fn insert<T>(storage: &mut Option<Self>, data: T) -> &mut T
+    where
+        Dyn: private::NewVTable<T>,
+    {
+        let storage = storage.insert(DynStorage::new(data));
+        unsafe { storage.inner_mut().as_mut::<T>() }
+    }
+
+    pub fn insert_pinned<T>(storage: Pin<&mut Option<Self>>, data: T) -> Pin<&mut T>
+    where
+        Dyn: private::NewVTable<T>,
+    {
+        unsafe { storage.map_unchecked_mut(|s| Self::insert(s, data)) }
+    }
 }
 
 impl<Dyn: private::DynTrait + ?Sized, S: Storage> Drop for DynStorage<Dyn, S> {

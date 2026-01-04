@@ -10,7 +10,7 @@ use syn::{
 use crate::{
     macros::{bail, try_match},
     methods::{is_dispatchable, is_sync_constant},
-    utils::{respan, to_impl_method},
+    utils::{fn_args, respan, to_impl_method},
 };
 
 mod dyn_trait;
@@ -171,9 +171,8 @@ fn dyn_storage_impl(
     let method_names = methods.iter().map(|method| method.sig.ident.clone());
     let vtable_methods = methods.iter().map(|method| {
         let method_name = &method.sig.ident;
-        let args = (method.sig.inputs.iter())
-            .filter_map(try_match!(FnArg::Typed(arg) => &arg.pat))
-            .collect::<Vec<_>>();
+        let args = fn_args(&method.sig).skip(1).collect::<Vec<_>>();
+        let erased_args = args.iter().map(|arg| quote!(::core::mem::transmute(#arg)));
         let self_as = match VTableReceiver::new(method) {
             VTableReceiver::Ref => quote!(as_ref),
             VTableReceiver::Mut => quote!(as_mut),
@@ -186,7 +185,7 @@ fn dyn_storage_impl(
                 ::core::mem::transmute::<#method_sig ,unsafe fn()>(
                     // transmute to erase lifetime
                     |__self, #(#args,)*| ::core::mem::transmute(
-                        __Dyn::#method_name(__self.#self_as(), #(#args,)*)
+                        __Dyn::#method_name(__self.#self_as(), #(#erased_args,)*)
                     )
                 )
             }
@@ -199,9 +198,7 @@ fn dyn_storage_impl(
             VTableReceiver::Mut => quote!(inner_mut),
             VTableReceiver::Pinned => quote!(inner_pinned_mut),
         };
-        let args = (method.sig.inputs.iter())
-            .filter_map(try_match!(FnArg::Typed(arg) => &arg.pat))
-            .collect::<Vec<_>>();
+        let args = fn_args(&method.sig).skip(1);
         let method_sig = vtable_method_signature(method, false);
         let block = parse_quote!({ unsafe {
             ::core::mem::transmute::<unsafe fn(), #method_sig>(self.vtable().#method_name)(self.#self_as(), #(#args,)*)

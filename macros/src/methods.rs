@@ -1,21 +1,17 @@
-use std::borrow::Cow;
-
 use proc_macro2::{Ident, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use syn::{
-    FnArg, GenericParam, ImplItemFn, Path, ReturnType, Signature, Token, TraitItemFn,
-    TypeImplTrait, TypeParamBound, TypeTraitObject, parse_quote, punctuated::Punctuated,
-    visit_mut::VisitMut,
+    GenericParam, ImplItemFn, Path, ReturnType, Signature, Token, TraitItemFn, TypeImplTrait,
+    TypeParamBound, TypeTraitObject, parse_quote, visit_mut::VisitMut,
 };
 
 use crate::{
     macros::{bail, try_match},
-    utils::{CapturedLifetimes, future_output, is_pinned, return_type, to_impl_method},
+    utils::{CapturedLifetimes, fn_args, future_output, is_pinned, return_type, to_impl_method},
 };
 
 #[derive(Default)]
 pub(crate) struct MethodAttrs {
-    send: Option<Path>,
     storage: Option<(Path, Path)>,
     try_sync: Option<Path>,
 }
@@ -30,10 +26,6 @@ impl MethodAttrs {
             bail!(attr, err);
         }
         Ok(())
-    }
-
-    pub(crate) fn send(&self) -> bool {
-        self.send.is_some()
     }
 
     pub(crate) fn try_sync(&self) -> bool {
@@ -66,21 +58,15 @@ pub(crate) fn parse_method_attrs(method: &mut TraitItemFn) -> syn::Result<Method
     Ok(attrs)
 }
 
-pub(crate) fn handle_async_method(
-    method: &mut TraitItemFn,
-    attrs: &MethodAttrs,
-) -> syn::Result<()> {
+pub(crate) fn handle_async_method(method: &mut TraitItemFn) -> syn::Result<()> {
     if method.sig.asyncness.is_some() {
         method.sig.asyncness = None;
         let output = return_type(method).map_or_else(|| quote!(()), ToTokens::to_token_stream);
-        let send_bound = attrs.send.as_ref().map(|_| quote!(+ Send));
-        method.sig.output = parse_quote!(-> impl Future<Output = #output> #send_bound);
+        method.sig.output = parse_quote!(-> impl Future<Output = #output>);
         if let Some(default) = &mut method.default {
             let stmts = &default.stmts;
             *default = parse_quote!({async move { #(#stmts)* }});
         }
-    } else if let Some(attr) = &attrs.send {
-        bail!(attr, "`Send` bound is only supported for async fn");
     }
     Ok(())
 }
@@ -125,16 +111,10 @@ pub(crate) fn dyn_method(
     method
 }
 
-fn forward_call(method: &Ident, args: &Punctuated<FnArg, Token![,]>) -> TokenStream {
-    let args = args.iter().map(|arg| match arg {
-        FnArg::Receiver(_) => Cow::Owned(parse_quote!(self)),
-        FnArg::Typed(arg) => Cow::Borrowed(&arg.pat),
-    });
-    quote!(__Dyn::#method(#(#args,)*))
-}
-
 pub(crate) fn impl_method(dyn_method: &TraitItemFn, dyn_storage: bool) -> ImplItemFn {
-    let call = forward_call(&dyn_method.sig.ident, &dyn_method.sig.inputs);
+    let method_name = &dyn_method.sig.ident;
+    let args = fn_args(&dyn_method.sig);
+    let call = quote!(__Dyn::#method_name(#(#args,)*));
     let block = if dyn_storage {
         parse_quote!({ ::dyn_utils::DynStorage::new(#call) })
     } else {
@@ -187,13 +167,13 @@ pub(crate) fn try_sync_impl_method(impl_method: &ImplItemFn) -> ImplItemFn {
     let mut method = impl_method.clone();
     method.sig = try_sync_signature(&method.sig);
     let is_sync = format_ident!("{}_IS_SYNC", method_name.to_string().to_uppercase());
-    let sync_call = forward_call(&format_ident!("{}_sync", method_name), &method.sig.inputs);
-    let async_call = forward_call(method_name, &method.sig.inputs);
+    let sync_method = format_ident!("{}_sync", method_name);
+    let args = fn_args(&method.sig).collect::<Vec<_>>();
     method.block = parse_quote!({
        if __Dyn::#is_sync {
-            ::dyn_utils::TrySync::Sync(#sync_call)
+            ::dyn_utils::TrySync::Sync(__Dyn::#sync_method(#(#args),*))
         } else {
-            ::dyn_utils::TrySync::Async(::dyn_utils::DynStorage::new(#async_call))
+            ::dyn_utils::TrySync::Async(::dyn_utils::DynStorage::new(__Dyn::#method_name(#(#args,)*)))
         }
     });
     method

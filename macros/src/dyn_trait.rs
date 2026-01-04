@@ -3,7 +3,7 @@ use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use syn::{
     GenericParam, ImplItem, ItemTrait, Path, TraitItem, TraitItemFn, Type, parse_quote,
-    parse_quote_spanned, spanned::Spanned,
+    parse_quote_spanned, spanned::Spanned, visit_mut::VisitMut,
 };
 
 use crate::{
@@ -12,7 +12,7 @@ use crate::{
         dyn_method, handle_async_method, impl_method, is_dispatchable, is_sync_constant,
         parse_method_attrs, sync_method, try_sync_dyn_method, try_sync_impl_method,
     },
-    utils::return_type,
+    utils::{PatternAsArg, return_type},
 };
 
 pub fn dyn_trait_impl(
@@ -37,18 +37,14 @@ pub fn dyn_trait_impl(
             }
             TraitItem::Fn(method) if is_dispatchable(method) => {
                 let attrs = parse_method_attrs(method)?;
-                if attrs.send() {
-                    handle_async_method(method, &attrs)?;
-                }
                 let mut method = TraitItemFn {
                     attrs: method.attrs.clone(),
                     sig: method.sig.clone(),
                     default: None,
                     semi_token: None,
                 };
-                if !attrs.send() {
-                    handle_async_method(&mut method, &attrs)?;
-                }
+                PatternAsArg.visit_signature_mut(&mut method.sig);
+                handle_async_method(&mut method)?;
                 if let Some(ret) = return_type(&method).and_then(try_match!(Type::ImplTrait)) {
                     let storage =
                         format_ident!("__Storage{}", method.sig.ident.to_string().to_pascal_case());

@@ -1,12 +1,14 @@
 use std::{
     hint::black_box,
     mem::MaybeUninit,
-    pin::pin,
+    pin::{Pin, pin},
     task::{Context, Poll, Waker},
 };
 
 use divan::Bencher;
+use dyn_utils::DynStorage;
 use dynify::Dynify;
+use futures::future::OptionFuture;
 
 // `futures::future::FutureExt::now_or_never` is not properly inlined
 macro_rules! now_or_never {
@@ -23,6 +25,20 @@ trait Trait {
     #[dyn_trait(try_sync)]
     async fn future(&self, s: &str) -> usize {
         s.len()
+    }
+    fn future_with_storage<'a, 's>(
+        &'a self,
+        s: &'a str,
+        storage: Pin<&'s mut Option<DynStorage<dyn Future<Output = usize> + 'a>>>,
+    ) -> Pin<&'s mut (dyn Future<Output = usize> + 'a)> {
+        DynStorage::insert_pinned(storage, self.future(s))
+    }
+    fn future_with_storage_option_future<'a>(
+        &'a self,
+        s: &'a str,
+        mut storage: Pin<&mut OptionFuture<DynStorage<dyn Future<Output = usize> + 'a>>>,
+    ) {
+        storage.set(Some(DynStorage::new(self.future(s))).into())
     }
     fn iter(&self) -> impl Iterator<Item = usize> {
         [1, 2, 3, 4].into_iter()
@@ -70,6 +86,25 @@ impl Trait3 for () {
 fn dyn_utils_async(b: Bencher) {
     let test = black_box(Box::new(()) as Box<dyn TraitDyn>);
     b.bench_local(|| now_or_never!(test.future("test")));
+}
+
+#[divan::bench]
+fn dyn_utils_async_with_storage(b: Bencher) {
+    let test = black_box(Box::new(()) as Box<dyn TraitDyn>);
+    b.bench_local(|| {
+        let storage = pin!(None);
+        now_or_never!(test.future_with_storage("test", storage))
+    });
+}
+
+#[divan::bench]
+fn dyn_utils_async_with_storage_option_future(b: Bencher) {
+    let test = black_box(Box::new(()) as Box<dyn TraitDyn>);
+    b.bench_local(|| {
+        let mut storage: Pin<&mut OptionFuture<_>> = pin!(None.into());
+        test.future_with_storage_option_future("test", storage.as_mut());
+        now_or_never!(storage).map(Option::unwrap)
+    });
 }
 
 #[divan::bench]

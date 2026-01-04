@@ -1,10 +1,11 @@
 use std::collections::HashSet;
 
 use proc_macro2::{Group, Span, TokenStream, TokenTree};
+use quote::quote;
 use syn::{
-    Block, CapturedParam, GenericArgument, GenericParam, Generics, ImplItemFn, Lifetime,
-    LifetimeParam, PathArguments, Receiver, ReturnType, TraitItemFn, Type, TypeImplTrait,
-    TypeParamBound, TypeReference, Visibility, parse_quote, visit_mut::VisitMut,
+    Block, CapturedParam, FnArg, GenericArgument, GenericParam, Generics, ImplItemFn, Lifetime,
+    LifetimeParam, PatIdent, PathArguments, Receiver, ReturnType, Signature, TraitItemFn, Type,
+    TypeImplTrait, TypeParamBound, TypeReference, Visibility, parse_quote, visit_mut::VisitMut,
 };
 
 use crate::macros::try_match;
@@ -101,4 +102,25 @@ pub(crate) fn respan(tokens: TokenStream, span: Span) -> TokenStream {
             tt
         })
         .collect()
+}
+
+pub(crate) struct PatternAsArg;
+
+impl VisitMut for PatternAsArg {
+    fn visit_pat_ident_mut(&mut self, i: &mut PatIdent) {
+        i.by_ref = None;
+        i.mutability = None;
+        i.subpat = None
+    }
+}
+
+pub(crate) fn fn_args(signature: &Signature) -> impl Iterator<Item = TokenStream> {
+    signature.inputs.iter().map(|arg| match arg {
+        FnArg::Receiver(_) => quote!(self),
+        FnArg::Typed(arg) => {
+            let mut pat = arg.pat.as_ref().clone();
+            PatternAsArg.visit_pat_mut(&mut pat);
+            quote!(#pat)
+        }
+    })
 }
