@@ -7,7 +7,10 @@ use syn::{
 
 use crate::{
     macros::{bail, try_match},
-    utils::{CapturedLifetimes, fn_args, future_output, is_pinned, return_type, to_impl_method},
+    utils::{
+        CapturedLifetimes, IteratorExt, fn_args, future_output, is_pinned, return_type,
+        to_impl_method,
+    },
 };
 
 #[derive(Default)]
@@ -90,10 +93,7 @@ pub(crate) fn dyn_method(
         bounds: (ret.bounds.iter())
             .filter(|b| matches!(b, TypeParamBound::Trait(_)))
             .cloned()
-            .map(|mut bound| {
-                captured.visit_type_param_bound_mut(&mut bound);
-                bound
-            })
+            .update(|bound| captured.visit_type_param_bound_mut(bound))
             .chain([parse_quote!('__dyn)])
             .collect(),
     };
@@ -168,7 +168,7 @@ pub(crate) fn try_sync_impl_method(impl_method: &ImplItemFn) -> ImplItemFn {
     method.sig = try_sync_signature(&method.sig);
     let is_sync = format_ident!("{}_IS_SYNC", method_name.to_string().to_uppercase());
     let sync_method = format_ident!("{}_sync", method_name);
-    let args = fn_args(&method.sig).collect::<Vec<_>>();
+    let args = fn_args(&method.sig).collect_vec();
     method.block = parse_quote!({
        if __Dyn::#is_sync {
             ::dyn_utils::TrySync::Sync(__Dyn::#sync_method(#(#args),*))

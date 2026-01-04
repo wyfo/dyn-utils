@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use proc_macro2::{Group, Span, TokenStream, TokenTree};
-use quote::quote;
+use quote::{ToTokens, quote};
 use syn::{
     Block, CapturedParam, FnArg, GenericArgument, GenericParam, Generics, ImplItemFn, Lifetime,
     LifetimeParam, PatIdent, PathArguments, Receiver, ReturnType, Signature, TraitItemFn, Type,
@@ -9,6 +9,21 @@ use syn::{
 };
 
 use crate::macros::try_match;
+
+pub(crate) trait IteratorExt: Iterator + Sized {
+    fn update(self, mut f: impl FnMut(&mut Self::Item)) -> impl Iterator<Item = Self::Item> {
+        self.map(move |mut item| {
+            f(&mut item);
+            item
+        })
+    }
+
+    fn collect_vec(self) -> Vec<Self::Item> {
+        self.collect()
+    }
+}
+
+impl<I: Iterator> IteratorExt for I {}
 
 pub(crate) fn return_type(method: &TraitItemFn) -> Option<&Type> {
     try_match!(&method.sig.output, ReturnType::Type(_, ty) => ty.as_ref())
@@ -94,12 +109,11 @@ impl VisitMut for CapturedLifetimes {
 
 pub(crate) fn respan(tokens: TokenStream, span: Span) -> TokenStream {
     (tokens.into_iter())
-        .map(|mut tt| {
+        .update(|mut tt| {
             if let TokenTree::Group(group) = &mut tt {
                 *group = Group::new(group.delimiter(), respan(group.stream(), span));
             }
             tt.set_span(span);
-            tt
         })
         .collect()
 }
@@ -120,7 +134,7 @@ pub(crate) fn fn_args(signature: &Signature) -> impl Iterator<Item = TokenStream
         FnArg::Typed(arg) => {
             let mut pat = arg.pat.as_ref().clone();
             PatternAsArg.visit_pat_mut(&mut pat);
-            quote!(#pat)
+            pat.to_token_stream()
         }
     })
 }
