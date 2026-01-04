@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use proc_macro2::{Group, Span, TokenStream, TokenTree};
 use syn::{
     Block, CapturedParam, GenericArgument, GenericParam, Generics, ImplItemFn, Lifetime,
     LifetimeParam, PathArguments, Receiver, ReturnType, TraitItemFn, Type, TypeImplTrait,
@@ -88,4 +89,16 @@ impl VisitMut for CapturedLifetimes {
         }
         syn::visit_mut::visit_type_reference_mut(self, i);
     }
+}
+
+pub(crate) fn respan(tokens: TokenStream, span: Span) -> TokenStream {
+    (tokens.into_iter())
+        .map(|mut tt| {
+            if let TokenTree::Group(group) = &mut tt {
+                *group = Group::new(group.delimiter(), respan(group.stream(), span));
+            }
+            tt.set_span(span);
+            tt
+        })
+        .collect()
 }

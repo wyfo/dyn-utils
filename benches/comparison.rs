@@ -20,7 +20,7 @@ macro_rules! now_or_never {
 
 #[dyn_utils::dyn_trait]
 trait Trait {
-    #[dyn_utils(try_sync, Send)]
+    #[dyn_trait(try_sync)]
     async fn future(&self, s: &str) -> usize {
         s.len()
     }

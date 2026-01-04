@@ -25,25 +25,25 @@ error: expected identifier
 error: attribute must be used on a method with Return Position Impl Trait
   --> tests/compilation/errors.rs:23:17
    |
-23 |     #[dyn_utils(storage = dyn_utils::DefaultStorage)]
+23 |     #[dyn_trait(storage = dyn_utils::DefaultStorage)]
    |                 ^^^^^^^
 
 error: expected `=`
   --> tests/compilation/errors.rs:29:24
    |
-29 |     #[dyn_utils(storage(dyn_utils::DefaultStorage))]
+29 |     #[dyn_trait(storage(dyn_utils::DefaultStorage))]
    |                        ^
 
 error: expected identifier
   --> tests/compilation/errors.rs:35:27
    |
-35 |     #[dyn_utils(storage = ?)]
+35 |     #[dyn_trait(storage = ?)]
    |                           ^
 
 error: attribute must be used on a method with Return Position Impl Trait
   --> tests/compilation/errors.rs:41:17
    |
-41 |     #[dyn_utils(try_sync)]
+41 |     #[dyn_trait(try_sync)]
    |                 ^^^^^^^^
 
 error: `try_sync` must be used on async methods
@@ -67,7 +67,7 @@ error: `try_sync` must be used on async methods
 error: unknown attribute
   --> tests/compilation/errors.rs:65:17
    |
-65 |     #[dyn_utils(unknown)]
+65 |     #[dyn_trait(unknown)]
    |                 ^^^^^^^
 
 error: `dyn_utils::sync` must be used on async method

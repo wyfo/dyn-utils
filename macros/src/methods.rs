@@ -50,11 +50,9 @@ impl MethodAttrs {
 
 pub(crate) fn parse_method_attrs(method: &mut TraitItemFn) -> syn::Result<MethodAttrs> {
     let mut attrs = MethodAttrs::default();
-    for attr in (method.attrs).extract_if(.., |attr| attr.path().is_ident("dyn_utils")) {
+    for attr in (method.attrs).extract_if(.., |attr| attr.path().is_ident("dyn_trait")) {
         attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("Send") {
-                attrs.send = Some(meta.path.clone())
-            } else if meta.path.is_ident("storage") {
+            if meta.path.is_ident("storage") {
                 meta.input.parse::<Token![=]>()?;
                 attrs.storage = Some((meta.path, meta.input.parse()?));
             } else if meta.path.is_ident("try_sync") {

@@ -5,8 +5,6 @@ use core::{
     task::{Context, Poll},
 };
 
-use crate::DynStorage;
-
 const _: () = {
     #[derive(Debug)]
     pub struct __VTable {
@@ -29,12 +27,10 @@ const _: () = {
         fn new_vtable<__Storage: crate::storage::Storage>() -> &'static Self::VTable {
             &const {
                 __VTable {
-                    __drop_in_place: const {
-                        if core::mem::needs_drop::<__Dyn>() {
-                            Some(|ptr_mut| unsafe { ptr_mut.cast::<__Dyn>().drop_in_place() })
-                        } else {
-                            None
-                        }
+                    __drop_in_place: if core::mem::needs_drop::<__Dyn>() {
+                        Some(|ptr_mut| unsafe { ptr_mut.cast::<__Dyn>().drop_in_place() })
+                    } else {
+                        None
                     },
                     __layout: const { core::alloc::Layout::new::<__Dyn>() },
                     type_id: TypeId::of::<__Dyn>(),
@@ -44,7 +40,7 @@ const _: () = {
     }
 };
 
-impl<'__dyn, __Storage: crate::storage::Storage> DynStorage<dyn Any + '__dyn, __Storage> {
+impl<'__dyn, __Storage: crate::storage::Storage> crate::DynStorage<dyn Any + '__dyn, __Storage> {
     pub fn type_id(&self) -> TypeId {
         self.vtable().type_id
     }
@@ -100,6 +96,11 @@ mod tests {
 
     fn assert_send<T: Send>(_: &T) {}
 
+    struct Droppable;
+    impl Drop for Droppable {
+        fn drop(&mut self) {}
+    }
+
     #[test]
     fn dyn_any() {
         let mut any = DynStorage::<dyn Any>::new(false);
@@ -110,6 +111,7 @@ mod tests {
         let storage = any.downcast::<()>().unwrap_err();
         assert!(storage.downcast::<bool>().unwrap());
         drop(DynStorage::<dyn Any>::new(()));
+        drop(DynStorage::<dyn Any>::new(Droppable));
     }
 
     #[test]

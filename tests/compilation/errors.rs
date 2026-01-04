@@ -20,49 +20,49 @@ trait InvalidRemote {
 
 #[dyn_utils::dyn_trait]
 trait StorageOnNormalMethod {
-    #[dyn_utils(storage = dyn_utils::DefaultStorage)]
+    #[dyn_trait(storage = dyn_utils::DefaultStorage)]
     fn method(&self);
 }
 
 #[dyn_utils::dyn_trait]
 trait StorageWithoutEqual {
-    #[dyn_utils(storage(dyn_utils::DefaultStorage))]
+    #[dyn_trait(storage(dyn_utils::DefaultStorage))]
     fn method(&self);
 }
 
 #[dyn_utils::dyn_trait]
 trait InvalidStorage {
-    #[dyn_utils(storage = ?)]
+    #[dyn_trait(storage = ?)]
     fn method(&self);
 }
 
 #[dyn_utils::dyn_trait]
 trait TrySyncOnNormalMethod {
-    #[dyn_utils(try_sync)]
+    #[dyn_trait(try_sync)]
     fn method(&self);
 }
 
 #[dyn_utils::dyn_trait]
 trait TrySyncOnNonAsyncMethod {
-    #[dyn_utils(try_sync)]
+    #[dyn_trait(try_sync)]
     fn method(&self) -> impl Iterator<Item = ()>;
 }
 
 #[dyn_utils::dyn_trait]
 trait TrySyncOnDummyFuture {
-    #[dyn_utils(try_sync)]
+    #[dyn_trait(try_sync)]
     fn method(&self) -> impl Future;
 }
 
 #[dyn_utils::dyn_trait]
 trait TrySyncOnDummyFuture2 {
-    #[dyn_utils(try_sync)]
+    #[dyn_trait(try_sync)]
     fn method(&self) -> impl Future<Item = ()>;
 }
 
 #[dyn_utils::dyn_trait]
 trait UnknownAttribute2 {
-    #[dyn_utils(unknown)]
+    #[dyn_trait(unknown)]
     fn method(&self);
 }
 
@@ -85,7 +85,7 @@ trait ForCoverage {
     type Result;
     fn method(&self) -> Self::Result;
     async fn empty(&self);
-    #[dyn_utils(try_sync)]
+    #[dyn_trait(try_sync)]
     async fn future(&self);
     nothing!();
 }

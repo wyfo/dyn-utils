@@ -1,8 +1,8 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 use heck::ToPascalCase;
-use proc_macro2::{Ident, TokenStream};
-use quote::{ToTokens, format_ident, quote};
+use proc_macro2::{Ident, Span, TokenStream};
+use quote::{ToTokens, format_ident, quote, quote_spanned};
 use syn::{
     FnArg, GenericParam, ImplItem, ImplItemFn, ItemTrait, Path, PathSegment, Token, TraitItem,
     TraitItemFn, Type, parse_macro_input, parse_quote, parse_quote_spanned, punctuated::Punctuated,
@@ -15,7 +15,7 @@ use crate::{
         dyn_method, handle_async_method, impl_method, is_dispatchable, is_sync_constant,
         parse_method_attrs, sync_method, try_sync_dyn_method, try_sync_impl_method,
     },
-    utils::{return_type, to_impl_method},
+    utils::{respan, return_type, to_impl_method},
 };
 
 mod macros;
@@ -53,7 +53,7 @@ fn dyn_trait_impl(
     let include_trait = remote.is_none();
     let dyn_trait_attrs = r#trait
         .attrs
-        .extract_if(.., |attr| attr.path().is_ident("dyn_utils"))
+        .extract_if(.., |attr| attr.path().is_ident("dyn_trait"))
         .map(|attr| {
             let mut new_attr = None;
             attr.parse_nested_meta(|meta| {
@@ -340,12 +340,10 @@ fn dyn_storage_impl(
                 fn new_vtable<__Storage: #crate_path::storage::Storage>() -> &'static Self::VTable {
                     &const {
                         __VTable {
-                            __drop_in_place: const {
-                                if core::mem::needs_drop::<__Dyn>() {
-                                    Some(|ptr_mut| unsafe { ptr_mut.cast::<__Dyn>().drop_in_place() })
-                                } else {
-                                    None
-                                }
+                            __drop_in_place: if core::mem::needs_drop::<__Dyn>() {
+                                Some(|ptr_mut| unsafe { ptr_mut.cast::<__Dyn>().drop_in_place() })
+                            } else {
+                                None
                             },
                             __layout: const { core::alloc::Layout::new::<__Dyn>() },
                             #(#vtable_methods,)*
@@ -396,6 +394,7 @@ impl VisitMut for ReplaceSelfWithDyn {
 
 fn vtable_method_signature(method: &TraitItemFn, new_vtable: bool) -> TokenStream {
     let unsafety = &method.sig.unsafety;
+    // We don't care about self lifetime because it is erased anyway
     let storage = match VTableReceiver::new(method) {
         VTableReceiver::Ref => quote!(&__Storage),
         VTableReceiver::Mut => quote!(&mut __Storage),
@@ -410,7 +409,7 @@ fn vtable_method_signature(method: &TraitItemFn, new_vtable: bool) -> TokenStrea
             if new_vtable {
                 ReplaceSelfWithDyn.visit_type_mut(&mut ty);
             }
-            ty
+            quote_spanned!(Span::call_site() => #ty)
         });
     let mut output = method.sig.output.clone();
     if new_vtable {
@@ -422,5 +421,7 @@ fn vtable_method_signature(method: &TraitItemFn, new_vtable: bool) -> TokenStrea
         .lifetimes()
         .map(|l| &l.lifetime)
         .take(if new_vtable { usize::MAX } else { 0 });
-    quote!(for<#(#lifetimes,)*> #unsafety fn(#storage, #(#params,)*) #output)
+    let fn_ptr = quote!(for<#(#lifetimes,)*> #unsafety fn(#storage, #(#params,)*) #output);
+    // because without it, RustRover highlight every type as unsafe code use
+    respan(fn_ptr, Span::call_site())
 }

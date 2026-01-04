@@ -11,13 +11,13 @@ trait Test {
     type GAT<T>;
     type Result;
     fn method(&self) -> Self::Result;
-    #[dyn_utils(storage = dyn_utils::DefaultStorage, try_sync)]
+    #[dyn_trait(storage = dyn_utils::DefaultStorage, try_sync)]
     async fn future<'a>(&self, s: &'a str) -> &'a str;
-    #[dyn_utils(try_sync)]
+    #[dyn_trait(try_sync)]
     async fn future2<'a>(&self, s: &'a str) -> &'a str;
     #[allow(clippy::needless_lifetimes)] // test non-captured generic lifetime
     fn future_send<'a>(&'_ self, s: &'a str) -> impl Future<Output = usize> + Send + use<Self>;
-    #[dyn_utils(try_sync)]
+    #[dyn_trait(try_sync)]
     async fn empty(&self);
     fn pinned_self(self: Pin<&mut Self>);
     nothing!();
