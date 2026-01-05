@@ -38,6 +38,11 @@ pub unsafe trait Storage: Sized {
     unsafe fn drop_in_place(&mut self, layout: Layout);
 }
 
+#[cfg(feature = "alloc")]
+pub trait StorageFromBox: Storage {
+    fn from_box<T>(boxed: StdBox<T>) -> Self;
+}
+
 /// A raw storage, where object is stored in place.
 ///
 /// Object size and alignment must fit, e.g. be lesser or equal to the generic parameter.
@@ -109,8 +114,8 @@ where
 pub struct Box(NonNull<()>);
 
 #[cfg(feature = "alloc")]
-impl Box {
-    pub fn new_box<T>(data: StdBox<T>) -> Self {
+impl StorageFromBox for Box {
+    fn from_box<T>(data: StdBox<T>) -> Self {
         Self(NonNull::new(StdBox::into_raw(data).cast()).unwrap())
     }
 }
@@ -119,7 +124,7 @@ impl Box {
 #[cfg(feature = "alloc")]
 unsafe impl Storage for Box {
     fn new<T>(data: T) -> Self {
-        Self::new_box(StdBox::new(data))
+        Self::from_box(StdBox::new(data))
     }
     fn ptr(&self) -> NonNull<()> {
         self.0
@@ -155,7 +160,6 @@ where
     Align<ALIGN>: Alignment;
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-#[cfg(feature = "alloc")]
 impl<const SIZE: usize, const ALIGN: usize> RawOrBox<SIZE, ALIGN>
 where
     Align<ALIGN>: Alignment,
@@ -163,12 +167,19 @@ where
     pub const fn new_raw<T>(data: T) -> Self {
         Self(RawOrBoxInner::Raw(Raw::new(data)))
     }
+}
 
-    pub fn new_box<T>(data: StdBox<T>) -> Self {
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[cfg(feature = "alloc")]
+impl<const SIZE: usize, const ALIGN: usize> StorageFromBox for RawOrBox<SIZE, ALIGN>
+where
+    Align<ALIGN>: Alignment,
+{
+    fn from_box<T>(data: StdBox<T>) -> Self {
         if Raw::<SIZE, ALIGN>::can_store::<T>() {
             Self::new(*data)
         } else {
-            Self(RawOrBoxInner::Box(Box::new_box(data)))
+            Self(RawOrBoxInner::Box(Box::from_box(data)))
         }
     }
 }

@@ -48,6 +48,19 @@ impl<S: Storage, Dyn: private::DynTrait + ?Sized> DynStorage<Dyn, S> {
         }
     }
 
+    #[cfg(feature = "alloc")]
+    pub fn from_box<T>(data: alloc::boxed::Box<T>) -> Self
+    where
+        S: storage::StorageFromBox,
+        Dyn: private::NewVTable<T>,
+    {
+        Self {
+            inner: S::from_box(data),
+            vtable: Dyn::new_vtable::<S>(),
+            _phantom: PhantomData,
+        }
+    }
+
     #[doc(hidden)]
     pub fn vtable(&self) -> &'static Dyn::VTable {
         self.vtable
