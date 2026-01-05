@@ -74,7 +74,7 @@ error: attribute must be used on a method with Return Position Impl Trait
 64 |     #[dyn_trait(unknown)]
    |       ^^^^^^^^^
 
-error: `dyn_utils::sync` must be used on async method
+error: `sync` must be used on async method
   --> tests/compilation/errors.rs:74:5
    |
 74 |     fn method(&self) {}
