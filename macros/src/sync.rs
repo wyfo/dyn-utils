@@ -4,9 +4,9 @@ use syn::{ImplItemFn, Signature};
 
 use crate::macros::bail_method;
 
-pub(super) fn sync_impl(method: ImplItemFn) -> syn::Result<TokenStream> {
+pub(super) fn sync_impl(method: ImplItemFn, _: ()) -> syn::Result<TokenStream> {
     if method.sig.asyncness.is_none() {
-        bail_method!(method, "`dyn_utils::sync` must be used on async method");
+        bail_method!(method, "`sync` must be used on async method");
     }
     let mut sync_method = method.clone();
     sync_method.sig.asyncness = None;

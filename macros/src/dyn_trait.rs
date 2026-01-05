@@ -12,6 +12,7 @@ use syn::{
 };
 
 use crate::{
+    MacroArgs, crate_name,
     macros::{bail, bail_method, fields, try_match},
     sync::{is_sync_const, sync_fn, try_sync_fn},
     utils::{
@@ -20,36 +21,30 @@ use crate::{
     },
 };
 
+#[derive(Default)]
 pub(super) struct DynTraitOpts {
+    crate_: Option<Path>,
     remote: Option<Path>,
-    dyn_trait: String,
-    dyn_utils: Path,
+    name_template: Option<String>,
 }
 
-impl DynTraitOpts {
-    pub(super) fn new() -> Self {
-        Self {
-            dyn_trait: "{}Dyn".into(),
-            dyn_utils: parse_quote!(::dyn_utils),
-            remote: None,
-        }
-    }
-    pub(super) fn parse_meta(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
+impl MacroArgs for DynTraitOpts {
+    fn parse_meta(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
         if meta.path.is_ident("crate") {
             meta.input.parse::<Token![=]>()?;
-            self.dyn_utils = meta.input.parse()?;
+            self.crate_ = Some(meta.input.parse()?);
         } else if meta.path.is_ident("remote") {
             meta.input.parse::<Token![=]>()?;
             self.remote = Some(meta.input.parse()?);
         } else if meta.path.is_ident("trait") {
             meta.input.parse::<Token![=]>()?;
-            self.dyn_trait = if meta.input.peek(syn::Ident) {
+            self.name_template = Some(if meta.input.peek(syn::Ident) {
                 meta.input.parse::<Ident>()?.to_string()
             } else if meta.input.peek(syn::LitStr) {
                 meta.input.parse::<syn::LitStr>()?.value()
             } else {
                 bail!(meta.input.span(), "invalid trait name");
-            };
+            });
         } else {
             bail!(meta.path, "unknown attribute");
         }
@@ -104,7 +99,7 @@ pub(super) fn dyn_trait_impl(
 struct DynTrait {
     include_trait: bool,
     dyn_trait_name: Ident,
-    dyn_utils: Path,
+    crate_: Path,
     remote: Path,
     trait_generics: Vec<Ident>,
     additional_trait_items: Vec<TraitItem>,
@@ -115,11 +110,11 @@ struct DynTrait {
 
 impl DynTrait {
     fn new(r#trait: &ItemTrait, opts: DynTraitOpts) -> Self {
-        let dyn_trait = opts.dyn_trait.replace("{}", &r#trait.ident.to_string());
+        let template = opts.name_template.as_deref().unwrap_or("{}Dyn");
         Self {
             include_trait: opts.remote.is_none(),
-            dyn_trait_name: format_ident!("{dyn_trait}"),
-            dyn_utils: opts.dyn_utils,
+            dyn_trait_name: format_ident!("{}", template.replace("{}", &r#trait.ident.to_string())),
+            crate_: opts.crate_.unwrap_or_else(crate_name),
             remote: opts.remote.unwrap_or_else(|| r#trait.ident.clone().into()),
             trait_generics: (r#trait.generics.type_params())
                 .map(|t| t.ident.clone())
@@ -141,7 +136,7 @@ impl DynTrait {
 
     fn parse_method(&mut self, method: &mut TraitItemFn) -> syn::Result<()> {
         let attrs = MethodAttrs::parse(method)?;
-        let dyn_method = DynMethod::new(&self.dyn_utils, &self.trait_generics, method);
+        let dyn_method = DynMethod::new(&self.crate_, &self.trait_generics, method);
         self.generic_storages
             .extend(dyn_method.generic_storage(attrs.storage));
         if attrs.try_sync {
@@ -194,14 +189,14 @@ impl MethodAttrs {
 
 struct DynMethod<'a> {
     orig_sig: &'a Signature,
-    dyn_utils: &'a Path,
+    crate_: &'a Path,
     dyn_method: TraitItemFn,
     rpit: Option<TypeImplTrait>,
     storage: Option<Ident>,
 }
 
 impl<'a> DynMethod<'a> {
-    fn new(dyn_utils: &'a Path, trait_generics: &[Ident], method: &'a TraitItemFn) -> Self {
+    fn new(crate_: &'a Path, trait_generics: &[Ident], method: &'a TraitItemFn) -> Self {
         let orig_sig = &method.sig;
         let mut method = TraitItemFn {
             attrs: method.attrs.clone(),
@@ -223,11 +218,11 @@ impl<'a> DynMethod<'a> {
         let storage = (rpit.is_some())
             .then(|| format_ident!("__Storage{}", method.sig.ident.to_string().to_pascal_case()));
         if let Some(rpit) = &rpit {
-            Self::update_dyn_signature(dyn_utils, trait_generics, &mut method.sig, rpit, &storage);
+            Self::update_dyn_signature(crate_, trait_generics, &mut method.sig, rpit, &storage);
         }
         Self {
             orig_sig,
-            dyn_utils,
+            crate_,
             dyn_method: method,
             rpit,
             storage,
@@ -235,7 +230,7 @@ impl<'a> DynMethod<'a> {
     }
 
     fn update_dyn_signature(
-        dyn_utils: &Path,
+        crate_: &Path,
         trait_generics: &[Ident],
         sig: &mut Signature,
         rpit: &TypeImplTrait,
@@ -260,25 +255,26 @@ impl<'a> DynMethod<'a> {
         (sig.generics.params.iter_mut()).for_each(|param| captured.visit_generic_param_mut(param));
         sig.generics.params.insert(0, parse_quote!('__dyn));
         (sig.inputs.iter_mut()).for_each(|arg| captured.visit_fn_arg_mut(arg));
-        sig.output = parse_quote!(-> #dyn_utils::DynStorage<#dyn_ret, #storage>);
+        sig.output = parse_quote!(-> #crate_::DynStorage<#dyn_ret, #storage>);
     }
 
     fn generic_storage(&self, default_storage: Option<Path>) -> Option<GenericParam> {
-        let dyn_utils = &self.dyn_utils;
+        let crate_ = &self.crate_;
         let storage = self.storage.as_ref()?;
         let default_storage =
-            default_storage.unwrap_or_else(|| parse_quote!(#dyn_utils::DefaultStorage));
+            default_storage.unwrap_or_else(|| parse_quote!(#crate_::DefaultStorage));
         Some(parse_quote_spanned! { default_storage.span() =>
-            #storage: #dyn_utils::storage::Storage = #default_storage
+            #storage: #crate_::storage::Storage = #default_storage
         })
     }
 
     fn impl_method(&self) -> ImplItemFn {
+        let crate_ = &self.crate_;
         let method_name = &self.orig_sig.ident;
         let args = fn_args(self.orig_sig);
         let call = quote!(__Dyn::#method_name(#(#args,)*));
         let block = if self.rpit.is_some() {
-            parse_quote!({ ::dyn_utils::DynStorage::new(#call) })
+            parse_quote!({ #crate_::DynStorage::new(#call) })
         } else {
             parse_quote!({ #call })
         };
@@ -309,11 +305,11 @@ impl<'a> DynMethod<'a> {
     }
 
     fn try_sync_signature(&self) -> Signature {
-        let dyn_utils = &self.dyn_utils;
+        let crate_ = &self.crate_;
         let mut signature = self.dyn_method.sig.clone();
         signature.ident = try_sync_fn(self.orig_sig);
         let output = return_type(&self.dyn_method.sig).unwrap();
-        signature.output = parse_quote!(-> #dyn_utils::TrySync<#output>);
+        signature.output = parse_quote!(-> #crate_::TrySync<#output>);
         signature
     }
 
@@ -324,16 +320,16 @@ impl<'a> DynMethod<'a> {
     }
 
     fn try_sync_impl(&self) -> ImplItemFn {
-        let dyn_utils = &self.dyn_utils;
+        let crate_ = &self.crate_;
         let is_sync = is_sync_const(self.orig_sig);
         let sync_method = sync_fn(self.orig_sig);
         let async_method = &self.orig_sig.ident;
         let args = fn_args(self.orig_sig).collect_vec();
         let block = parse_quote!({
            if __Dyn::#is_sync {
-                #dyn_utils::TrySync::Sync(__Dyn::#sync_method(#(#args),*))
+                #crate_::TrySync::Sync(__Dyn::#sync_method(#(#args),*))
             } else {
-                #dyn_utils::TrySync::Async(#dyn_utils::DynStorage::new(__Dyn::#async_method(#(#args,)*)))
+                #crate_::TrySync::Async(#crate_::DynStorage::new(__Dyn::#async_method(#(#args,)*)))
             }
         });
         impl_method(self.try_sync_signature(), block)

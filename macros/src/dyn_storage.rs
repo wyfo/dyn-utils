@@ -7,32 +7,26 @@ use syn::{
 };
 
 use crate::{
+    MacroArgs, crate_name,
     macros::{bail, bail_method, fields, try_match},
     utils::{IteratorExt, fn_args, impl_method, is_dispatchable, last_segments, respan},
 };
 
+#[derive(Default)]
 pub(super) struct DynStorageOpts {
-    dyn_utils: Path,
     bounds: Punctuated<Path, Token![+]>,
+    crate_: Option<Path>,
     remote: Option<Path>,
 }
 
-impl DynStorageOpts {
-    pub(super) fn new() -> Self {
-        Self {
-            dyn_utils: parse_quote!(::dyn_utils),
-            bounds: Punctuated::new(),
-            remote: None,
-        }
-    }
-
-    pub(super) fn parse_meta(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
+impl MacroArgs for DynStorageOpts {
+    fn parse_meta(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
         if meta.path.is_ident("bounds") {
             meta.input.parse::<Token![=]>()?;
             self.bounds = Punctuated::parse_terminated(meta.input)?;
         } else if meta.path.is_ident("crate") {
             meta.input.parse::<Token![=]>()?;
-            self.dyn_utils = meta.input.parse()?;
+            self.crate_ = Some(meta.input.parse()?);
         } else if meta.path.is_ident("remote") {
             meta.input.parse::<Token![=]>()?;
             self.remote = Some(meta.input.parse()?);
@@ -66,7 +60,7 @@ pub(super) fn dyn_storage_impl(
             _ => bail!(item, "unsupported item"),
         }
     }
-    fields!(dyn_storage => dyn_utils, remote);
+    fields!(dyn_storage => crate_, remote);
     let dyn_trait = dyn_storage.dyn_trait();
     let generics = dyn_storage.generics();
     let vtable_fields = (dyn_storage.methods.iter()).map(|m| dyn_storage.vtable_field(m));
@@ -87,7 +81,7 @@ pub(super) fn dyn_storage_impl(
                 #(#vtable_fields,)*
             }
 
-            impl<#(#generics,)*> #dyn_utils::private::DynTrait for dyn #dyn_trait #where_clause {
+            impl<#(#generics,)*> #crate_::private::DynTrait for dyn #dyn_trait #where_clause {
                 type VTable = __VTable;
                 fn drop_in_place(vtable: &Self::VTable) -> Option<unsafe fn(core::ptr::NonNull<()>)> {
                     vtable.__drop_in_place
@@ -97,10 +91,10 @@ pub(super) fn dyn_storage_impl(
                 }
             }
 
-            unsafe impl<#(#generics,)* __Dyn: #dyn_trait> #dyn_utils::private::NewVTable<__Dyn>
+            unsafe impl<#(#generics,)* __Dyn: #dyn_trait> #crate_::private::NewVTable<__Dyn>
                 for dyn #dyn_trait #where_clause
             {
-                fn new_vtable<__Storage: #dyn_utils::storage::Storage>() -> &'static Self::VTable {
+                fn new_vtable<__Storage: #crate_::storage::Storage>() -> &'static Self::VTable {
                     &const {
                         __VTable {
                             __drop_in_place: if core::mem::needs_drop::<__Dyn>() {
@@ -115,8 +109,8 @@ pub(super) fn dyn_storage_impl(
                 }
             }
 
-            impl<#(#generics,)* __Storage: #dyn_utils::storage::Storage> #remote_with_args
-                for #dyn_utils::DynStorage<dyn #dyn_trait, __Storage> #where_clause
+            impl<#(#generics,)* __Storage: #crate_::storage::Storage> #remote_with_args
+                for #crate_::DynStorage<dyn #dyn_trait, __Storage> #where_clause
             {
                 #(#impl_types)*
                 #(#impl_methods)*
@@ -128,7 +122,7 @@ pub(super) fn dyn_storage_impl(
 struct DynStorage<'a> {
     r#trait: &'a ItemTrait,
     include_trait: bool,
-    dyn_utils: Path,
+    crate_: Path,
     remote: Path,
     bounds: Punctuated<Path, Token![+]>,
     types: Vec<(Ident, &'a TraitItemType)>,
@@ -143,7 +137,7 @@ impl<'a> DynStorage<'a> {
         Self {
             r#trait,
             include_trait: opts.remote.is_none() || has_dyn_storage_attr(),
-            dyn_utils: opts.dyn_utils,
+            crate_: opts.crate_.unwrap_or_else(crate_name),
             remote: opts.remote.unwrap_or_else(|| r#trait.ident.clone().into()),
             bounds: opts.bounds,
             types: Vec::new(),
