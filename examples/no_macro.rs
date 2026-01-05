@@ -7,11 +7,11 @@ trait Callback {
         Self: Sized;
 }
 
-trait CallbackDyn<S: dyn_utils::storage::Storage = dyn_utils::DefaultStorage> {
+trait DynCallback<S: dyn_utils::storage::Storage = dyn_utils::DefaultStorage> {
     fn call<'a>(&'a self, arg: &'a str) -> DynStorage<dyn Future<Output = ()> + Send + 'a, S>;
 }
 
-impl<T: Callback, S: dyn_utils::storage::Storage> CallbackDyn<S> for T {
+impl<T: Callback, S: dyn_utils::storage::Storage> DynCallback<S> for T {
     fn call<'a>(&'a self, arg: &'a str) -> DynStorage<dyn Future<Output = ()> + Send + 'a, S> {
         DynStorage::new(self.call(arg))
     }
@@ -25,6 +25,6 @@ impl Callback for HelloCallback {
 }
 
 fn main() {
-    let callback: Box<dyn CallbackDyn> = Box::new(HelloCallback);
+    let callback: Box<dyn DynCallback> = Box::new(HelloCallback);
     callback.call("world").now_or_never(); // prints "Hello world!"
 }

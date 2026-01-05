@@ -91,13 +91,13 @@ impl Trait3 for () {
 
 #[divan::bench]
 fn dyn_utils_async(b: Bencher) {
-    let test = black_box(Box::new(()) as Box<dyn TraitDyn>);
+    let test = black_box(Box::new(()) as Box<dyn DynTrait>);
     b.bench_local(|| now_or_never!(test.future("test")));
 }
 
 #[divan::bench]
 fn dyn_utils_async_with_storage(b: Bencher) {
-    let test = black_box(Box::new(()) as Box<dyn TraitDyn>);
+    let test = black_box(Box::new(()) as Box<dyn DynTrait>);
     b.bench_local(|| {
         let storage = pin!(None);
         now_or_never!(test.future_with_storage("test", storage))
@@ -106,7 +106,7 @@ fn dyn_utils_async_with_storage(b: Bencher) {
 
 #[divan::bench]
 fn dyn_utils_async_with_storage_option_future(b: Bencher) {
-    let test = black_box(Box::new(()) as Box<dyn TraitDyn>);
+    let test = black_box(Box::new(()) as Box<dyn DynTrait>);
     b.bench_local(|| {
         let mut storage: Pin<&mut OptionFuture<_>> = pin!(None.into());
         test.future_with_storage_option_future("test", storage.as_mut());
@@ -116,19 +116,19 @@ fn dyn_utils_async_with_storage_option_future(b: Bencher) {
 
 #[divan::bench]
 fn dyn_utils_try_sync(b: Bencher) {
-    let test = black_box(Box::new(Sync) as Box<dyn TraitDyn>);
+    let test = black_box(Box::new(Sync) as Box<dyn DynTrait>);
     b.bench_local(|| now_or_never!(test.future_try_sync("test")));
 }
 
 #[divan::bench]
 fn dyn_utils_try_sync_fallback(b: Bencher) {
-    let test = black_box(Box::new(()) as Box<dyn TraitDyn>);
+    let test = black_box(Box::new(()) as Box<dyn DynTrait>);
     b.bench_local(|| now_or_never!(test.future_try_sync("test")));
 }
 
 #[divan::bench]
 fn dyn_utils_iter(b: Bencher) {
-    let test = black_box(Box::new(()) as Box<dyn TraitDyn>);
+    let test = black_box(Box::new(()) as Box<dyn DynTrait>);
     b.bench_local(|| test.iter().count());
 }
 

@@ -17,6 +17,6 @@ impl Callback for HelloCallback {
 }
 
 fn main() {
-    let callback: DynStorage<dyn CallbackDyn> = DynStorage::new(HelloCallback); // no allocation
+    let callback: DynStorage<dyn DynCallback> = DynStorage::new(HelloCallback); // no allocation
     callback.call_try_sync("world").now_or_never(); // prints "Hello world!"
 }

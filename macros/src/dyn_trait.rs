@@ -110,7 +110,7 @@ struct DynTrait {
 
 impl DynTrait {
     fn new(r#trait: &ItemTrait, opts: DynTraitOpts) -> Self {
-        let template = opts.name_template.as_deref().unwrap_or("{}Dyn");
+        let template = opts.name_template.as_deref().unwrap_or("Dyn{}");
         Self {
             include_trait: opts.remote.is_none(),
             dyn_trait_name: format_ident!("{}", template.replace("{}", &r#trait.ident.to_string())),
