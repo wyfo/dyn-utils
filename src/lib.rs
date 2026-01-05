@@ -24,7 +24,7 @@ pub use dyn_utils_macros::*;
 pub use elain::*;
 
 /// Default storage for return-position `impl Trait`.
-pub type DefaultStorage = storage::RawOrBox<{ 16 * size_of::<usize>() }>;
+pub type DefaultStorage = storage::RawOrBox<{ 128 * size_of::<usize>() }>;
 
 pub struct DynStorage<Dyn: private::DynTrait + ?Sized, S: Storage = DefaultStorage> {
     inner: S,
