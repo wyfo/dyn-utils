@@ -2,9 +2,7 @@ use dyn_utils::DynStorage;
 use futures::FutureExt;
 
 trait Callback {
-    fn call(&self, arg: &str) -> impl Future<Output = ()> + Send
-    where
-        Self: Sized;
+    fn call(&self, arg: &str) -> impl Future<Output = ()> + Send;
 }
 
 trait DynCallback<S: dyn_utils::storage::Storage = dyn_utils::DefaultStorage> {
