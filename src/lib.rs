@@ -32,9 +32,9 @@ pub struct DynStorage<Dyn: private::DynTrait + ?Sized, S: Storage = DefaultStora
     _phantom: PhantomData<Dyn>,
 }
 
-unsafe impl<Dyn: private::DynTrait + ?Sized, S: Storage> Send for DynStorage<Dyn, S> {}
-
-unsafe impl<Dyn: private::DynTrait + ?Sized, S: Storage> Sync for DynStorage<Dyn, S> {}
+unsafe impl<Dyn: Send + private::DynTrait + ?Sized, S: Storage> Send for DynStorage<Dyn, S> {}
+unsafe impl<Dyn: Sync + private::DynTrait + ?Sized, S: Storage> Sync for DynStorage<Dyn, S> {}
+impl<Dyn: Unpin + private::DynTrait + ?Sized, S: Storage> Unpin for DynStorage<Dyn, S> {}
 
 impl<S: Storage, Dyn: private::DynTrait + ?Sized> DynStorage<Dyn, S> {
     pub fn new<T>(data: T) -> Self
