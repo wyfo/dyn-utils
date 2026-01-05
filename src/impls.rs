@@ -72,7 +72,7 @@ impl<'__dyn, __Storage: crate::storage::Storage> crate::DynStorage<dyn Any + '__
 
 #[crate::dyn_storage(crate = crate, remote = Future)]
 #[crate::dyn_storage(crate = crate, remote = Future, bounds = Send)]
-pub(crate) trait Future {
+trait Future {
     type Output;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output>;
 }
