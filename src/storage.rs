@@ -187,6 +187,8 @@ where
 }
 
 /// A [`Raw`] storage with `Box` backup if the object doesn't fit in.
+///
+/// When `alloc` feature is not enabled, it behaves like [`Raw`].
 #[derive(Debug)]
 pub struct RawOrBox<const SIZE: usize, const ALIGN: usize = { align_of::<usize>() }>(
     RawOrBoxInner<SIZE, ALIGN>,
