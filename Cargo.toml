@@ -30,6 +30,11 @@ harness = false
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
+unsafe_op_in_unsafe_fn = "forbid"
+unused_unsafe = "forbid"
 
 [lints.clippy]
+dbg_macro = "warn"
 missing_safety_doc = "allow"
+semicolon_if_nothing_returned = "warn"
+undocumented_unsafe_blocks = "deny"

@@ -27,6 +27,7 @@ macro_rules! any_impl {
                 }
             }
 
+            // SAFETY: vtable fields respect trait contract
             unsafe impl<__Dyn: Any> crate::private::VTable<__Dyn> for $dyn_any {
                 fn vtable<__Storage: crate::storage::Storage>() -> &'static Self::VTable {
                     &const {
@@ -54,6 +55,7 @@ macro_rules! any_impl {
             /// Returns some reference to the inner value if it is of type `T`,
             /// or `None` if it isn’t.
             pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
+                // SAFETY: `is` ensures that the storage has been initialized with `T`
                 self.is::<T>().then(|| unsafe { self.storage().as_ref() })
             }
 
@@ -61,6 +63,7 @@ macro_rules! any_impl {
             /// or `None` if it isn’t.
             pub fn downcast_mut<T: Any>(&mut self) -> Option<&mut T> {
                 self.is::<T>()
+                    // SAFETY: `is` ensures that the storage has been initialized with `T`
                     .then(|| unsafe { self.storage_mut().as_mut() })
             }
 
@@ -69,9 +72,12 @@ macro_rules! any_impl {
             #[cfg_attr(coverage_nightly, coverage(off))]
             pub fn downcast<T: Any>(self) -> Result<T, Self> {
                 if self.is::<T>() {
-                    let mut this = ManuallyDrop::new(self);
+                    let mut this = core::mem::ManuallyDrop::new(self);
                     let storage = this.storage_mut();
+                    // SAFETY: `is` ensures that the storage has been initialized with `T`
                     let obj = unsafe { storage.ptr_mut().cast().read() };
+                    // SAFETY: the storage is no longer used after,
+                    // and `is` ensures that the storage has been initialized with `T`
                     unsafe { __Storage::drop_in_place(storage, core::alloc::Layout::new::<T>()) };
                     Ok(obj)
                 } else {

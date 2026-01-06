@@ -88,6 +88,7 @@ pub(super) fn dyn_object_impl(r#trait: ItemTrait, opts: DynObjectOps) -> syn::Re
                 }
             }
 
+            // SAFETY: vtable fields respect trait contract
             unsafe impl<#(#generics,)* __Dyn: #dyn_trait> #crate_::private::VTable<__Dyn>
                 for dyn #dyn_trait #where_clause
             {
@@ -194,9 +195,10 @@ impl<'a> DynObject<'a> {
         let fn_ptr = vtable_fn_pointer(method, true);
         quote! {
             #[allow(clippy::useless_transmute)]
+            // SAFETY: transmutation are only used to erase lifetime,
+            // the real lifetime being enforced in the trait implementation
             #method_name: unsafe {
                 ::core::mem::transmute::<#fn_ptr ,unsafe fn()>(
-                    // transmute to erase lifetime
                     |__self, #(#args,)*| ::core::mem::transmute(
                         __Dyn::#method_name(__self.#self_as(), #(#erased_args,)*)
                     )
@@ -214,6 +216,7 @@ impl<'a> DynObject<'a> {
         };
         let args = fn_args(&method.sig).skip(1);
         let fn_ptr = vtable_fn_pointer(method, false);
+        // SAFETY: the vtable method has been initialized with the given type
         let block = parse_quote!({ unsafe {
             ::core::mem::transmute::<unsafe fn(), #fn_ptr>(self.vtable().#method_name)(
                 self.#self_as(), #(#args,)*

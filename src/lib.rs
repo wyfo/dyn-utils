@@ -61,7 +61,6 @@ use core::{
     any::{Any, TypeId},
     fmt,
     marker::PhantomData,
-    mem::ManuallyDrop,
     pin::Pin,
 };
 
@@ -96,7 +95,9 @@ pub struct DynObject<Dyn: private::DynTrait + ?Sized, S: Storage = DefaultStorag
     _phantom: PhantomData<Dyn>,
 }
 
+// SAFETY: DynObject is just a wrapper around `Dyn`
 unsafe impl<Dyn: Send + private::DynTrait + ?Sized, S: Storage> Send for DynObject<Dyn, S> {}
+// SAFETY: DynObject is just a wrapper around `Dyn`
 unsafe impl<Dyn: Sync + private::DynTrait + ?Sized, S: Storage> Sync for DynObject<Dyn, S> {}
 impl<Dyn: Unpin + private::DynTrait + ?Sized, S: Storage> Unpin for DynObject<Dyn, S> {}
 
@@ -144,24 +145,27 @@ impl<S: Storage, Dyn: private::DynTrait + ?Sized> DynObject<Dyn, S> {
 
     #[doc(hidden)]
     pub fn storage_pinned_mut(self: Pin<&mut Self>) -> Pin<&mut S> {
+        // SAFETY: `self.storage` is structurally pinned
         unsafe { self.map_unchecked_mut(|this| &mut this.storage) }
     }
 
     #[doc(hidden)]
-    pub fn insert<T>(storage: &mut Option<Self>, object: T) -> &mut T
+    pub fn insert<T>(this: &mut Option<Self>, object: T) -> &mut T
     where
         Dyn: private::VTable<T>,
     {
-        let storage = storage.insert(DynObject::new(object));
+        let storage = this.insert(DynObject::new(object));
+        // SAFETY: storage has been initialized with `T`
         unsafe { storage.storage_mut().as_mut::<T>() }
     }
 
     #[doc(hidden)]
-    pub fn insert_pinned<T>(storage: Pin<&mut Option<Self>>, object: T) -> Pin<&mut T>
+    pub fn insert_pinned<T>(this: Pin<&mut Option<Self>>, object: T) -> Pin<&mut T>
     where
         Dyn: private::VTable<T>,
     {
-        unsafe { storage.map_unchecked_mut(|s| Self::insert(s, object)) }
+        // SAFETY: the returned reference cannot is structurally pinned
+        unsafe { this.map_unchecked_mut(|opt| Self::insert(opt, object)) }
     }
 }
 

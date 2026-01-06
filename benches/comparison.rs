@@ -45,7 +45,7 @@ trait Trait<Storage: dyn_utils::storage::Storage = dyn_utils::DefaultStorage> {
     ) where
         Storage: 'a,
     {
-        storage.set(Some(DynObject::new(self.future(s))).into())
+        storage.set(Some(DynObject::new(self.future(s))).into());
     }
     fn iter(&self) -> impl Iterator<Item = usize> {
         [1, 2, 3, 4].into_iter()
