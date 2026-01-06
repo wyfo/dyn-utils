@@ -9,6 +9,7 @@ use divan::Bencher;
 use dyn_utils::{DynObject, storage::Raw};
 use dynify::Dynify;
 use futures::future::OptionFuture;
+use stackfuture::StackFuture;
 
 // `futures::future::FutureExt::now_or_never` is not properly inlined
 macro_rules! now_or_never {
@@ -56,6 +57,15 @@ trait Trait3 {
     async fn future(&self, s: &str) -> usize;
 }
 
+trait Trait4 {
+    fn future<'a>(&'a self, s: &'a str) -> StackFuture<'a, usize, 128>;
+}
+
+#[dynosaur::dynosaur(DynTrait5 = dyn(box) Trait5)]
+trait Trait5 {
+    async fn future(&self, s: &str) -> usize;
+}
+
 impl Trait for () {}
 
 struct Sync;
@@ -77,6 +87,18 @@ impl Trait2 for () {
 
 #[async_trait::async_trait]
 impl Trait3 for () {
+    async fn future(&self, s: &str) -> usize {
+        s.len()
+    }
+}
+
+impl Trait4 for () {
+    fn future<'a>(&'a self, s: &'a str) -> StackFuture<'a, usize, 128> {
+        StackFuture::from(async move { s.len() })
+    }
+}
+
+impl Trait5 for () {
     async fn future(&self, s: &str) -> usize {
         s.len()
     }
@@ -167,6 +189,18 @@ fn dynify_iter(b: Bencher) {
 #[divan::bench]
 fn async_trait_future(b: Bencher) {
     let test = black_box(Box::new(()) as Box<dyn Trait3>);
+    b.bench_local(|| now_or_never!(test.future("test")));
+}
+
+#[divan::bench]
+fn stackfuture_future(b: Bencher) {
+    let test = black_box(Box::new(()) as Box<dyn Trait4>);
+    b.bench_local(|| now_or_never!(test.future("test")));
+}
+
+#[divan::bench]
+fn dynosaur_future(b: Bencher) {
+    let test = black_box(DynTrait5::from_box(Box::new(())));
     b.bench_local(|| now_or_never!(test.future("test")));
 }
 
