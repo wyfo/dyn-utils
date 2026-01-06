@@ -4,7 +4,7 @@
 extensively tested with [miri], it contains a lot of unsafe code, and some uncaught 
 unsoundness may still remain.*
 
-*Documentation is available at <https://wyfo.github.io/dyn-fn/>. You can test the crate 
+*Documentation is available at <https://wyfo.github.io/dyn-utils/>. You can test the crate 
 using a git dependency:*
 
 ```toml
