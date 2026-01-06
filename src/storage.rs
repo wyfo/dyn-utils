@@ -1,4 +1,6 @@
-#[cfg(feature = "alloc")]
+//! The storages backing [`DynObject`](crate::DynObject).
+
+#[cfg(any(feature = "alloc", doc))]
 use alloc::boxed::Box as StdBox;
 use core::{
     alloc::Layout,
@@ -9,45 +11,73 @@ use core::{
     ptr::NonNull,
 };
 
-use elain::{Align, Alignment};
+pub use elain::{Align, Alignment};
 
 /// A storage that can be used to store dynamic type-erased objects.
 ///
 /// # Safety
 ///
-/// `can_store` return must be constant for `T`.
-/// `ptr`/`ptr_mut` must return a pointer to the data stored in the storage.
+/// `ptr`/`ptr_mut`/`as_ref`/`as_mut`/`as_pinned_mut` must return a pointer/reference
+/// to stored data.
 pub unsafe trait Storage: Sized {
+    /// Constructs a new storage storing `T`.
     fn new<T>(data: T) -> Self;
+    /// Returns a const pointer to stored data.
     fn ptr(&self) -> NonNull<()>;
+    /// Returns a mutable pointer to stored data.
     fn ptr_mut(&mut self) -> NonNull<()>;
+    /// Returns a reference to stored data.
+    ///
+    /// # Safety
+    ///
+    /// Storage must have been constructed with `T`
     unsafe fn as_ref<T>(&self) -> &T {
+        // SAFETY: `Self::ptr` returns a const pointer to stored data
         unsafe { self.ptr().cast().as_ref() }
     }
+    /// Returns a mutable reference to stored data.
+    ///
+    /// # Safety
+    ///
+    /// Storage must have been constructed with `T`
     unsafe fn as_mut<T>(&mut self) -> &mut T {
+        // SAFETY: `Self::ptr` returns a mutable pointer to stored data
         unsafe { self.ptr_mut().cast().as_mut() }
     }
+    /// Returns a pinned mutable reference to stored data.
+    ///
+    /// # Safety
+    ///
+    /// Storage must have been constructed with from `T`
     unsafe fn as_pinned_mut<T>(self: Pin<&mut Self>) -> Pin<&mut T> {
+        // SAFETY: data is not moved, and `Self::as_mut` as the same precondition
         unsafe { self.map_unchecked_mut(|this| this.as_mut()) }
     }
+    /// Drop the storage in place with the layout of the stored data.
+    ///
+    /// Stored data should have been dropped in place before calling this method.
+    ///
     /// # Safety
     ///
     /// `drop_in_place` must be called once, and the storage must not be used
-    /// after. `layout` must be the layout of the `data` passed in `Self::new`
-    /// (or in other constructor like `new_box`, etc.)
+    /// after. `layout` must be the layout of the data stored.
     unsafe fn drop_in_place(&mut self, layout: Layout);
 }
 
+/// A storage that can be constructed from boxed data.
 #[cfg(feature = "alloc")]
 pub trait FromBox: Storage {
+    /// Constructs a new storage storing `T`.
+    ///
+    /// Data may be moved out the box if it fits in the storage.
     fn from_box<T>(boxed: StdBox<T>) -> Self;
 }
 
-/// A raw storage, where object is stored in place.
+/// A raw storage, where data is stored in place.
 ///
-/// Object size and alignment must fit, e.g. be lesser or equal to the generic parameter.
+/// Data size and alignment must fit, e.g. be lesser or equal to the generic parameters.
 /// This condition is enforced by a constant assertion, which triggers at build time
-/// (it is not triggered by **cargo check**).
+/// — **it is not triggered by `cargo check`**.
 #[derive(Debug)]
 #[repr(C)]
 pub struct Raw<const SIZE: usize, const ALIGN: usize = { align_of::<usize>() }>
@@ -64,8 +94,16 @@ impl<const SIZE: usize, const ALIGN: usize> Raw<SIZE, ALIGN>
 where
     Align<ALIGN>: Alignment,
 {
+    /// Returns `true` if `T` can be stored in the storage.
     pub const fn can_store<T>() -> bool {
         size_of::<T>() <= SIZE && align_of::<T>() <= ALIGN
+    }
+
+    /// Constructs a new `Raw` storage, with compile-time assertion that `T` can be stored.
+    pub const fn new<T>(data: T) -> Self {
+        const { assert!(Self::can_store::<T>()) };
+        // SAFETY: assertion above ensures function contract
+        unsafe { Self::new_unchecked::<T>(data) }
     }
 
     /// # Safety
@@ -82,12 +120,6 @@ where
         // matches `data` ones; alignment is obtained through `_align` field and `repr(C)`
         unsafe { raw.data.as_mut_ptr().cast::<T>().write(data) };
         raw
-    }
-
-    pub const fn new<T>(data: T) -> Self {
-        const { assert!(Self::can_store::<T>()) };
-        // SAFETY: assertion above ensures function contract
-        unsafe { Self::new_unchecked::<T>(data) }
     }
 }
 
@@ -109,7 +141,7 @@ where
 }
 
 /// A type-erased [`Box`](StdBox).
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", doc))]
 #[derive(Debug)]
 pub struct Box(NonNull<()>);
 
@@ -164,6 +196,7 @@ impl<const SIZE: usize, const ALIGN: usize> RawOrBox<SIZE, ALIGN>
 where
     Align<ALIGN>: Alignment,
 {
+    /// Constructs a [`Raw`] variant of `RawOrBox`.
     pub const fn new_raw<T>(data: T) -> Self {
         Self(RawOrBoxInner::Raw(Raw::new(data)))
     }
@@ -184,7 +217,7 @@ where
     }
 }
 
-// SAFETY: Both `Raw` and `Box` implements `Storage`
+// SAFETY: The impl delegates to `Raw`/`Box` which implements `Storage`
 // This enum is generic and the variant is chosen according constant predicate,
 // so it's not possible to cover all variant for a specific monomorphization.
 // https://github.com/taiki-e/cargo-llvm-cov/issues/394
@@ -222,17 +255,23 @@ where
     }
     unsafe fn as_ref<T>(&self) -> &T {
         match &self.0 {
+            // SAFETY: same precondition
             RawOrBoxInner::Raw(s) if Raw::<SIZE, ALIGN>::can_store::<T>() => unsafe { s.as_ref() },
             #[cfg(feature = "alloc")]
+            // SAFETY: same precondition
             RawOrBoxInner::Box(s) if !Raw::<SIZE, ALIGN>::can_store::<T>() => unsafe { s.as_ref() },
+            // SAFETY: storage will always be Raw if it can store `T`
             _ => unsafe { unreachable_unchecked() },
         }
     }
     unsafe fn as_mut<T>(&mut self) -> &mut T {
         match &mut self.0 {
+            // SAFETY: same precondition
             RawOrBoxInner::Raw(s) if Raw::<SIZE, ALIGN>::can_store::<T>() => unsafe { s.as_mut() },
             #[cfg(feature = "alloc")]
+            // SAFETY: same precondition
             RawOrBoxInner::Box(s) if !Raw::<SIZE, ALIGN>::can_store::<T>() => unsafe { s.as_mut() },
+            // SAFETY: storage will always be Raw if it can store `T`
             _ => unsafe { unreachable_unchecked() },
         }
     }

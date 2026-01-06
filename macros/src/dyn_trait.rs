@@ -309,7 +309,7 @@ impl<'a> DynMethod<'a> {
         let mut signature = self.dyn_method.sig.clone();
         signature.ident = try_sync_fn(self.orig_sig);
         let output = return_type(&self.dyn_method.sig).unwrap();
-        signature.output = parse_quote!(-> #crate_::TrySync<#output>);
+        signature.output = parse_quote!(-> #crate_::private::TrySync<#output>);
         signature
     }
 
@@ -327,9 +327,9 @@ impl<'a> DynMethod<'a> {
         let args = fn_args(self.orig_sig).collect_vec();
         let block = parse_quote!({
            if __Dyn::#is_sync {
-                #crate_::TrySync::Sync(__Dyn::#sync_method(#(#args),*))
+                #crate_::private::TrySync::Sync(__Dyn::#sync_method(#(#args),*))
             } else {
-                #crate_::TrySync::Async(#crate_::DynObject::new(__Dyn::#async_method(#(#args,)*)))
+                #crate_::private::TrySync::Async(#crate_::DynObject::new(__Dyn::#async_method(#(#args,)*)))
             }
         });
         impl_method(self.try_sync_signature(), block)

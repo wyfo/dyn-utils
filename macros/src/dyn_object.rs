@@ -94,12 +94,8 @@ pub(super) fn dyn_object_impl(r#trait: ItemTrait, opts: DynObjectOps) -> syn::Re
                 fn vtable<__Storage: #crate_::storage::Storage>() -> &'static Self::VTable {
                     &const {
                         __VTable {
-                            __drop_in_place: if core::mem::needs_drop::<__Dyn>() {
-                                Some(|ptr_mut| unsafe { ptr_mut.cast::<__Dyn>().drop_in_place() })
-                            } else {
-                                None
-                            },
-                            __layout: const { core::alloc::Layout::new::<__Dyn>() },
+                            __drop_in_place: #crate_::private::drop_in_place_fn::<__Dyn>(),
+                            __layout: core::alloc::Layout::new::<__Dyn>(),
                             #(#vtable_methods,)*
                         }
                     }

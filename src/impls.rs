@@ -31,12 +31,8 @@ macro_rules! any_impl {
                 fn vtable<__Storage: crate::storage::Storage>() -> &'static Self::VTable {
                     &const {
                         __VTable {
-                            __drop_in_place: if core::mem::needs_drop::<__Dyn>() {
-                                Some(|ptr_mut| unsafe { ptr_mut.cast::<__Dyn>().drop_in_place() })
-                            } else {
-                                None
-                            },
-                            __layout: const { core::alloc::Layout::new::<__Dyn>() },
+                            __drop_in_place: crate::private::drop_in_place_fn::<__Dyn>(),
+                            __layout: core::alloc::Layout::new::<__Dyn>(),
                             type_id: core::any::TypeId::of::<__Dyn>(),
                         }
                     }
@@ -45,23 +41,30 @@ macro_rules! any_impl {
         };
 
         impl<__Storage: crate::storage::Storage> crate::DynObject<$dyn_any, __Storage> {
+            /// Returns the [`TypeId`](core::any::TypeId) of the underlying concrete type.
             pub fn type_id(&self) -> core::any::TypeId {
                 self.vtable().type_id
             }
 
+            /// Returns `true` if the inner type is the same as `T`.
             pub fn is<T: Any>(&self) -> bool {
                 self.type_id() == TypeId::of::<T>()
             }
 
+            /// Returns some reference to the inner value if it is of type `T`,
+            /// or `None` if it isn’t.
             pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
                 self.is::<T>().then(|| unsafe { self.storage().as_ref() })
             }
 
+            /// Returns some mutable reference to the inner value if it is of type `T`,
+            /// or `None` if it isn’t.
             pub fn downcast_mut<T: Any>(&mut self) -> Option<&mut T> {
                 self.is::<T>()
                     .then(|| unsafe { self.storage_mut().as_mut() })
             }
 
+            /// Attempts to downcast the object to a concrete type.
             // TODO understand why it prevents 100% coverage
             #[cfg_attr(coverage_nightly, coverage(off))]
             pub fn downcast<T: Any>(self) -> Result<T, Self> {

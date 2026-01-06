@@ -1,21 +1,71 @@
+//! A utility library for working with [trait objects].
+//!
+//! Trait objects, i.e. `dyn Trait`, are unsized and requires to be stored in a container
+//! like `Box`. This crate provides [`DynObject`], a container for trait object with a
+//! generic [`storage`].
+//!
+//! [`storage::Raw`] stores object in place, making `DynObject<dyn Trait, storage::Raw>`
+//! allocation-free. On the other hand, [`storage::RawOrBox`], used in [`DefaultStorage`],
+//! falls back to an allocated `Box` if  the object is too big to fit in place.
+//! <br>
+//! These storages thus makes `DynObject` a good alternative to `Box` when it comes to write a
+//! [dyn-compatible] version of a trait with return-position `impl Trait`, such as async methods.
+//!
+//! # Examples
+//!
+//! ```rust
+//! trait Callback {
+//!     fn call(&self, arg: &str) -> impl Future<Output = ()> + Send;
+//! }
+//!
+//! // Dyn-compatible version
+//! trait DynCallback {
+//!     fn call<'a>(&'a self, arg: &'a str) -> DynObject<dyn Future<Output = ()> + Send + 'a>;
+//! }
+//!
+//! impl<T: Callback> DynCallback for T {
+//!     fn call<'a>(&'a self, arg: &'a str) -> DynObject<dyn Future<Output = ()> + Send + 'a> {
+//!         DynObject::new(self.call(arg))
+//!     }
+//! }
+//!
+//! async fn exec_callback(callback: &dyn DynCallback) {
+//!     callback.call("Hello world!").await;
+//! }
+//! ```
+//!
+//! This crate also provides [`dyn_trait`] proc-macro to do the same as above:
+//!
+//! ```rust
+//! #[dyn_utils::dyn_trait] // generates `DynCallback` trait
+//! trait Callback {
+//!     fn call(&self, arg: &str) -> impl Future<Output = ()> + Send;
+//! }
+//!
+//! async fn exec_callback(callback: &dyn DynCallback) {
+//!     callback.call("Hello world!").await;
+//! }
+//! ```
+//!
+//! [trait objects]: https://doc.rust-lang.org/std/keyword.dyn.html
+//! [dyn-compatible]: https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![no_std]
+#![forbid(missing_docs)]
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", doc))]
 extern crate alloc;
 
 use core::{
     any::{Any, TypeId},
-    fmt, hint,
+    fmt,
     marker::PhantomData,
-    mem,
     mem::ManuallyDrop,
     pin::Pin,
-    task::{Context, Poll},
 };
 
-use storage::Storage;
+use crate::{impls::any_impl, storage::Storage};
 
 mod impls;
 #[doc(hidden)]
@@ -23,16 +73,13 @@ pub mod private;
 pub mod storage;
 
 pub use dyn_utils_macros::*;
-pub use elain::*;
-
-use crate::impls::any_impl;
 
 /// Default storage for [`DynObject`], and used in [`dyn_trait`] macro.
 pub type DefaultStorage = storage::RawOrBox<{ 128 * size_of::<usize>() }>;
 
 /// A trait object whose data is stored in a generic [`Storage`].
 ///
-/// [`dyn_object`] can be used to make a trait compatible with `DynObject`
+/// [`dyn_object`] proc-macro can be used to make a trait compatible with `DynObject`.
 ///
 /// # Examples
 ///
@@ -54,25 +101,27 @@ unsafe impl<Dyn: Sync + private::DynTrait + ?Sized, S: Storage> Sync for DynObje
 impl<Dyn: Unpin + private::DynTrait + ?Sized, S: Storage> Unpin for DynObject<Dyn, S> {}
 
 impl<S: Storage, Dyn: private::DynTrait + ?Sized> DynObject<Dyn, S> {
-    pub fn new<T>(data: T) -> Self
+    /// Constructs a new `DynObject` from an object implementing the trait
+    pub fn new<T>(object: T) -> Self
     where
         Dyn: private::VTable<T>,
     {
         Self {
-            storage: S::new(data),
+            storage: S::new(object),
             vtable: Dyn::vtable::<S>(),
             _phantom: PhantomData,
         }
     }
 
+    /// Construct a new `DynObject` from a boxed object implementing the trait
     #[cfg(feature = "alloc")]
-    pub fn from_box<T>(data: alloc::boxed::Box<T>) -> Self
+    pub fn from_box<T>(boxed: alloc::boxed::Box<T>) -> Self
     where
         S: storage::FromBox,
         Dyn: private::VTable<T>,
     {
         Self {
-            storage: S::from_box(data),
+            storage: S::from_box(boxed),
             vtable: Dyn::vtable::<S>(),
             _phantom: PhantomData,
         }
@@ -98,19 +147,21 @@ impl<S: Storage, Dyn: private::DynTrait + ?Sized> DynObject<Dyn, S> {
         unsafe { self.map_unchecked_mut(|this| &mut this.storage) }
     }
 
-    pub fn insert<T>(storage: &mut Option<Self>, data: T) -> &mut T
+    #[doc(hidden)]
+    pub fn insert<T>(storage: &mut Option<Self>, object: T) -> &mut T
     where
         Dyn: private::VTable<T>,
     {
-        let storage = storage.insert(DynObject::new(data));
+        let storage = storage.insert(DynObject::new(object));
         unsafe { storage.storage_mut().as_mut::<T>() }
     }
 
-    pub fn insert_pinned<T>(storage: Pin<&mut Option<Self>>, data: T) -> Pin<&mut T>
+    #[doc(hidden)]
+    pub fn insert_pinned<T>(storage: Pin<&mut Option<Self>>, object: T) -> Pin<&mut T>
     where
         Dyn: private::VTable<T>,
     {
-        unsafe { storage.map_unchecked_mut(|s| Self::insert(s, data)) }
+        unsafe { storage.map_unchecked_mut(|s| Self::insert(s, object)) }
     }
 }
 
@@ -146,63 +197,14 @@ any_impl!(dyn Any);
 any_impl!(dyn Any + Send);
 any_impl!(dyn Any + Send + Sync);
 
-pub enum TrySync<F: Future> {
-    Sync(F::Output),
-    Async(F),
-    SyncPolled,
-}
-
-impl<F: Future> TrySync<F> {
-    #[cfg_attr(coverage_nightly, coverage(off))] // Because of `unreachable_unchecked` branch
-    #[inline(always)]
-    unsafe fn take_sync(&mut self) -> F::Output {
-        match mem::replace(self, TrySync::SyncPolled) {
-            TrySync::Sync(res) => res,
-            _ => unsafe { hint::unreachable_unchecked() },
-        }
-    }
-}
-
-impl<F: Future> Future for TrySync<F> {
-    type Output = F::Output;
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match unsafe { self.get_unchecked_mut() } {
-            res @ TrySync::Sync(_) => Poll::Ready(unsafe { res.take_sync() }),
-            TrySync::Async(fut) => unsafe { Pin::new_unchecked(fut) }.poll(cx),
-            _ => panic!("future polled after completion"),
-        }
-    }
-}
-
 #[cfg_attr(coverage_nightly, coverage(off))] // Because of `unreachable_unchecked` branch
 #[cfg(test)]
 mod tests {
-    use core::{
-        any::Any,
-        future::{Ready, ready},
-        pin::pin,
-    };
+    use core::any::Any;
 
-    use futures::FutureExt;
-
-    use crate::{TrySync, impls::any_test};
+    use crate::impls::any_test;
 
     any_test!(dyn_any, dyn Any);
     any_test!(dyn_any_send, dyn Any + Send);
     any_test!(dyn_any_send_sync, dyn Any + Send + Sync);
-
-    #[test]
-    fn try_sync() {
-        for try_sync in [TrySync::Sync(42), TrySync::Async(ready(42))] {
-            assert_eq!(try_sync.now_or_never(), Some(42));
-        }
-    }
-
-    #[test]
-    #[should_panic(expected = "future polled after completion")]
-    fn try_sync_polled_after_completion() {
-        let mut try_sync = pin!(TrySync::<Ready<i32>>::Sync(42));
-        assert_eq!(try_sync.as_mut().now_or_never(), Some(42));
-        try_sync.now_or_never();
-    }
 }
