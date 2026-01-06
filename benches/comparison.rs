@@ -131,8 +131,8 @@ fn dyn_utils_future_no_alloc(b: Bencher) {
 }
 
 #[divan::bench]
-fn dyn_utils_future_no_drop(b: Bencher) {
-    let test = black_box(Box::new(NoDrop) as Box<dyn DynTrait>);
+fn dyn_utils_future_no_alloc_no_drop(b: Bencher) {
+    let test = black_box(Box::new(NoDrop) as Box<dyn DynTrait<Raw<128>>>);
     b.bench_local(|| now_or_never!(test.future("test")));
 }
 
@@ -213,13 +213,13 @@ fn async_trait_future(b: Bencher) {
 }
 
 #[divan::bench]
-fn stackfuture_future(b: Bencher) {
+fn stackfuture_future_no_alloc(b: Bencher) {
     let test = black_box(Box::new(()) as Box<dyn Trait4>);
     b.bench_local(|| now_or_never!(test.future("test")));
 }
 
 #[divan::bench]
-fn stackfuture_future_no_drop(b: Bencher) {
+fn stackfuture_future_no_alloc_no_drop(b: Bencher) {
     let test = black_box(Box::new(NoDrop) as Box<dyn Trait4>);
     b.bench_local(|| now_or_never!(test.future("test")));
 }
