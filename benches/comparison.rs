@@ -6,7 +6,7 @@ use std::{
 };
 
 use divan::Bencher;
-use dyn_utils::DynStorage;
+use dyn_utils::DynObject;
 use dynify::Dynify;
 use futures::future::OptionFuture;
 
@@ -29,23 +29,23 @@ trait Trait<Storage: dyn_utils::storage::Storage = dyn_utils::DefaultStorage> {
     fn future_with_storage<'a, 'storage>(
         &'a self,
         s: &'a str,
-        storage: Pin<&'storage mut Option<DynStorage<dyn Future<Output = usize> + 'a, Storage>>>,
+        storage: Pin<&'storage mut Option<DynObject<dyn Future<Output = usize> + 'a, Storage>>>,
     ) -> Pin<&'storage mut (dyn Future<Output = usize> + 'a)>
     where
         Storage: 'a,
     {
-        DynStorage::insert_pinned(storage, self.future(s))
+        DynObject::insert_pinned(storage, self.future(s))
     }
     fn future_with_storage_option_future<'a, 'storage>(
         &'a self,
         s: &'a str,
         mut storage: Pin<
-            &'storage mut OptionFuture<DynStorage<dyn Future<Output = usize> + 'a, Storage>>,
+            &'storage mut OptionFuture<DynObject<dyn Future<Output = usize> + 'a, Storage>>,
         >,
     ) where
         Storage: 'a,
     {
-        storage.set(Some(DynStorage::new(self.future(s))).into())
+        storage.set(Some(DynObject::new(self.future(s))).into())
     }
     fn iter(&self) -> impl Iterator<Item = usize> {
         [1, 2, 3, 4].into_iter()

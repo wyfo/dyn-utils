@@ -1,4 +1,4 @@
-use dyn_utils::DynStorage;
+use dyn_utils::DynObject;
 use futures::FutureExt;
 
 trait Callback {
@@ -6,12 +6,12 @@ trait Callback {
 }
 
 trait DynCallback<S: dyn_utils::storage::Storage = dyn_utils::DefaultStorage> {
-    fn call<'a>(&'a self, arg: &'a str) -> DynStorage<dyn Future<Output = ()> + Send + 'a, S>;
+    fn call<'a>(&'a self, arg: &'a str) -> DynObject<dyn Future<Output = ()> + Send + 'a, S>;
 }
 
 impl<T: Callback, S: dyn_utils::storage::Storage> DynCallback<S> for T {
-    fn call<'a>(&'a self, arg: &'a str) -> DynStorage<dyn Future<Output = ()> + Send + 'a, S> {
-        DynStorage::new(self.call(arg))
+    fn call<'a>(&'a self, arg: &'a str) -> DynObject<dyn Future<Output = ()> + Send + 'a, S> {
+        DynObject::new(self.call(arg))
     }
 }
 

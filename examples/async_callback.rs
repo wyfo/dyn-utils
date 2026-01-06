@@ -1,4 +1,4 @@
-use dyn_utils::DynStorage;
+use dyn_utils::DynObject;
 use futures::FutureExt;
 
 #[dyn_utils::dyn_trait] // make the trait dyn-compatible
@@ -17,6 +17,6 @@ impl Callback for HelloCallback {
 }
 
 fn main() {
-    let callback: DynStorage<dyn DynCallback> = DynStorage::new(HelloCallback); // no allocation
+    let callback: DynObject<dyn DynCallback> = DynObject::new(HelloCallback); // no allocation
     callback.call_try_sync("world").now_or_never(); // prints "Hello world!"
 }

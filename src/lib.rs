@@ -26,24 +26,24 @@ pub use elain::*;
 /// Default storage for return-position `impl Trait`.
 pub type DefaultStorage = storage::RawOrBox<{ 128 * size_of::<usize>() }>;
 
-pub struct DynStorage<Dyn: private::DynTrait + ?Sized, S: Storage = DefaultStorage> {
-    inner: S,
+pub struct DynObject<Dyn: private::DynTrait + ?Sized, S: Storage = DefaultStorage> {
+    storage: S,
     vtable: &'static Dyn::VTable,
     _phantom: PhantomData<Dyn>,
 }
 
-unsafe impl<Dyn: Send + private::DynTrait + ?Sized, S: Storage> Send for DynStorage<Dyn, S> {}
-unsafe impl<Dyn: Sync + private::DynTrait + ?Sized, S: Storage> Sync for DynStorage<Dyn, S> {}
-impl<Dyn: Unpin + private::DynTrait + ?Sized, S: Storage> Unpin for DynStorage<Dyn, S> {}
+unsafe impl<Dyn: Send + private::DynTrait + ?Sized, S: Storage> Send for DynObject<Dyn, S> {}
+unsafe impl<Dyn: Sync + private::DynTrait + ?Sized, S: Storage> Sync for DynObject<Dyn, S> {}
+impl<Dyn: Unpin + private::DynTrait + ?Sized, S: Storage> Unpin for DynObject<Dyn, S> {}
 
-impl<S: Storage, Dyn: private::DynTrait + ?Sized> DynStorage<Dyn, S> {
+impl<S: Storage, Dyn: private::DynTrait + ?Sized> DynObject<Dyn, S> {
     pub fn new<T>(data: T) -> Self
     where
-        Dyn: private::NewVTable<T>,
+        Dyn: private::VTable<T>,
     {
         Self {
-            inner: S::new(data),
-            vtable: Dyn::new_vtable::<S>(),
+            storage: S::new(data),
+            vtable: Dyn::vtable::<S>(),
             _phantom: PhantomData,
         }
     }
@@ -51,12 +51,12 @@ impl<S: Storage, Dyn: private::DynTrait + ?Sized> DynStorage<Dyn, S> {
     #[cfg(feature = "alloc")]
     pub fn from_box<T>(data: alloc::boxed::Box<T>) -> Self
     where
-        S: storage::StorageFromBox,
-        Dyn: private::NewVTable<T>,
+        S: storage::FromBox,
+        Dyn: private::VTable<T>,
     {
         Self {
-            inner: S::from_box(data),
-            vtable: Dyn::new_vtable::<S>(),
+            storage: S::from_box(data),
+            vtable: Dyn::vtable::<S>(),
             _phantom: PhantomData,
         }
     }
@@ -67,57 +67,57 @@ impl<S: Storage, Dyn: private::DynTrait + ?Sized> DynStorage<Dyn, S> {
     }
 
     #[doc(hidden)]
-    pub fn inner(&self) -> &S {
-        &self.inner
+    pub fn storage(&self) -> &S {
+        &self.storage
     }
 
     #[doc(hidden)]
-    pub fn inner_mut(&mut self) -> &mut S {
-        &mut self.inner
+    pub fn storage_mut(&mut self) -> &mut S {
+        &mut self.storage
     }
 
     #[doc(hidden)]
-    pub fn inner_pinned_mut(self: Pin<&mut Self>) -> Pin<&mut S> {
-        unsafe { self.map_unchecked_mut(|this| &mut this.inner) }
+    pub fn storage_pinned_mut(self: Pin<&mut Self>) -> Pin<&mut S> {
+        unsafe { self.map_unchecked_mut(|this| &mut this.storage) }
     }
 
     pub fn insert<T>(storage: &mut Option<Self>, data: T) -> &mut T
     where
-        Dyn: private::NewVTable<T>,
+        Dyn: private::VTable<T>,
     {
-        let storage = storage.insert(DynStorage::new(data));
-        unsafe { storage.inner_mut().as_mut::<T>() }
+        let storage = storage.insert(DynObject::new(data));
+        unsafe { storage.storage_mut().as_mut::<T>() }
     }
 
     pub fn insert_pinned<T>(storage: Pin<&mut Option<Self>>, data: T) -> Pin<&mut T>
     where
-        Dyn: private::NewVTable<T>,
+        Dyn: private::VTable<T>,
     {
         unsafe { storage.map_unchecked_mut(|s| Self::insert(s, data)) }
     }
 }
 
-impl<Dyn: private::DynTrait + ?Sized, S: Storage> Drop for DynStorage<Dyn, S> {
+impl<Dyn: private::DynTrait + ?Sized, S: Storage> Drop for DynObject<Dyn, S> {
     fn drop(&mut self) {
         if let Some(drop_inner) = Dyn::drop_in_place(self.vtable) {
             // SAFETY: the storage data is no longer accessed after the call,
             // and is matched by the vtable as per function contract.
-            unsafe { drop_inner(self.inner.ptr_mut()) };
+            unsafe { drop_inner(self.storage.ptr_mut()) };
         }
         let layout = Dyn::layout(self.vtable);
         // SAFETY: the storage data is no longer accessed after the call,
         // and is matched by the vtable as per function contract.
-        unsafe { self.inner.drop_in_place(layout) };
+        unsafe { self.storage.drop_in_place(layout) };
     }
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl<Dyn: private::DynTrait<VTable: fmt::Debug> + ?Sized, S: Storage + fmt::Debug> fmt::Debug
-    for DynStorage<Dyn, S>
+    for DynObject<Dyn, S>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DynStorage")
-            .field("inner", &self.inner)
+            .field("inner", &self.storage)
             .field("vtable", &self.vtable)
             .finish()
     }

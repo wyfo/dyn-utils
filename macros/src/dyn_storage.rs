@@ -91,10 +91,10 @@ pub(super) fn dyn_storage_impl(
                 }
             }
 
-            unsafe impl<#(#generics,)* __Dyn: #dyn_trait> #crate_::private::NewVTable<__Dyn>
+            unsafe impl<#(#generics,)* __Dyn: #dyn_trait> #crate_::private::VTable<__Dyn>
                 for dyn #dyn_trait #where_clause
             {
-                fn new_vtable<__Storage: #crate_::storage::Storage>() -> &'static Self::VTable {
+                fn vtable<__Storage: #crate_::storage::Storage>() -> &'static Self::VTable {
                     &const {
                         __VTable {
                             __drop_in_place: if core::mem::needs_drop::<__Dyn>() {
@@ -110,7 +110,7 @@ pub(super) fn dyn_storage_impl(
             }
 
             impl<#(#generics,)* __Storage: #crate_::storage::Storage> #remote_with_args
-                for #crate_::DynStorage<dyn #dyn_trait, __Storage> #where_clause
+                for #crate_::DynObject<dyn #dyn_trait, __Storage> #where_clause
             {
                 #(#impl_types)*
                 #(#impl_methods)*
@@ -215,9 +215,9 @@ impl<'a> DynStorage<'a> {
     fn impl_method(&self, method: &TraitItemFn) -> ImplItemFn {
         let method_name = &method.sig.ident;
         let self_as = match VTableReceiver::new(method) {
-            VTableReceiver::Ref => quote!(inner),
-            VTableReceiver::Mut => quote!(inner_mut),
-            VTableReceiver::Pinned => quote!(inner_pinned_mut),
+            VTableReceiver::Ref => quote!(storage),
+            VTableReceiver::Mut => quote!(storage_mut),
+            VTableReceiver::Pinned => quote!(storage_pinned_mut),
         };
         let args = fn_args(&method.sig).skip(1);
         let fn_ptr = vtable_fn_pointer(method, false);

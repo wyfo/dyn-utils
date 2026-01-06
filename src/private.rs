@@ -8,6 +8,6 @@ pub trait DynTrait {
     fn layout(vtable: &Self::VTable) -> Layout;
 }
 
-pub unsafe trait NewVTable<T>: DynTrait {
-    fn new_vtable<S: Storage>() -> &'static Self::VTable;
+pub unsafe trait VTable<T>: DynTrait {
+    fn vtable<S: Storage>() -> &'static Self::VTable;
 }

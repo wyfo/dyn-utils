@@ -255,7 +255,7 @@ impl<'a> DynMethod<'a> {
         (sig.generics.params.iter_mut()).for_each(|param| captured.visit_generic_param_mut(param));
         sig.generics.params.insert(0, parse_quote!('__dyn));
         (sig.inputs.iter_mut()).for_each(|arg| captured.visit_fn_arg_mut(arg));
-        sig.output = parse_quote!(-> #crate_::DynStorage<#dyn_ret, #storage>);
+        sig.output = parse_quote!(-> #crate_::DynObject<#dyn_ret, #storage>);
     }
 
     fn generic_storage(&self, default_storage: Option<Path>) -> Option<GenericParam> {
@@ -274,7 +274,7 @@ impl<'a> DynMethod<'a> {
         let args = fn_args(self.orig_sig);
         let call = quote!(__Dyn::#method_name(#(#args,)*));
         let block = if self.rpit.is_some() {
-            parse_quote!({ #crate_::DynStorage::new(#call) })
+            parse_quote!({ #crate_::DynObject::new(#call) })
         } else {
             parse_quote!({ #call })
         };
@@ -329,7 +329,7 @@ impl<'a> DynMethod<'a> {
            if __Dyn::#is_sync {
                 #crate_::TrySync::Sync(__Dyn::#sync_method(#(#args),*))
             } else {
-                #crate_::TrySync::Async(#crate_::DynStorage::new(__Dyn::#async_method(#(#args,)*)))
+                #crate_::TrySync::Async(#crate_::DynObject::new(__Dyn::#async_method(#(#args,)*)))
             }
         });
         impl_method(self.try_sync_signature(), block)

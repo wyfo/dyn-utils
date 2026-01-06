@@ -39,7 +39,7 @@ pub unsafe trait Storage: Sized {
 }
 
 #[cfg(feature = "alloc")]
-pub trait StorageFromBox: Storage {
+pub trait FromBox: Storage {
     fn from_box<T>(boxed: StdBox<T>) -> Self;
 }
 
@@ -114,7 +114,7 @@ where
 pub struct Box(NonNull<()>);
 
 #[cfg(feature = "alloc")]
-impl StorageFromBox for Box {
+impl FromBox for Box {
     fn from_box<T>(data: StdBox<T>) -> Self {
         Self(NonNull::new(StdBox::into_raw(data).cast()).unwrap())
     }
@@ -171,7 +171,7 @@ where
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[cfg(feature = "alloc")]
-impl<const SIZE: usize, const ALIGN: usize> StorageFromBox for RawOrBox<SIZE, ALIGN>
+impl<const SIZE: usize, const ALIGN: usize> FromBox for RawOrBox<SIZE, ALIGN>
 where
     Align<ALIGN>: Alignment,
 {
@@ -255,14 +255,14 @@ mod tests {
 
     use elain::{Align, Alignment};
 
-    use crate::{DynStorage, storage::Storage};
+    use crate::{DynObject, storage::Storage};
 
     #[crate::dyn_storage(crate = crate)]
     trait Test {}
     impl Test for () {}
     impl<const N: usize> Test for [u8; N] {}
     impl Test for u64 {}
-    type TestStorage<'__dyn, S> = DynStorage<dyn Test + '__dyn, S>;
+    type TestObject<'__dyn, S> = DynObject<dyn Test + '__dyn, S>;
 
     #[test]
     fn raw_alignment() {
@@ -270,15 +270,15 @@ mod tests {
         where
             Align<ALIGN>: Alignment,
         {
-            let storages = [(); 2].map(TestStorage::<super::Raw<0, ALIGN>>::new);
+            let storages = [(); 2].map(TestObject::<super::Raw<0, ALIGN>>::new);
             for s in &storages {
-                assert!(s.inner.ptr().cast::<Align<ALIGN>>().is_aligned());
+                assert!(s.storage.ptr().cast::<Align<ALIGN>>().is_aligned());
             }
             const { assert!(ALIGN < 2048) };
             assert!(
                 storages
                     .iter()
-                    .any(|s| !s.inner.ptr().cast::<Align<2048>>().is_aligned())
+                    .any(|s| !s.storage.ptr().cast::<Align<2048>>().is_aligned())
             );
         }
         check_alignment::<1>();
@@ -292,18 +292,18 @@ mod tests {
     fn raw_or_box() {
         fn check_variant<const N: usize>(variant: impl Fn(&super::RawOrBox<8>) -> bool) {
             let array = core::array::from_fn::<u8, N, _>(|i| i as u8);
-            let storage = TestStorage::<super::RawOrBox<8>>::new(array);
-            assert!(variant(&storage.inner));
+            let storage = TestObject::<super::RawOrBox<8>>::new(array);
+            assert!(variant(&storage.storage));
             assert_eq!(
-                unsafe { storage.inner.ptr().cast::<[u8; N]>().read() },
+                unsafe { storage.storage.ptr().cast::<[u8; N]>().read() },
                 array
             );
         }
         check_variant::<4>(|s| matches!(s.0, super::RawOrBoxInner::Raw(_)));
         check_variant::<64>(|s| matches!(s.0, super::RawOrBoxInner::Box(_)));
 
-        let storage = TestStorage::<super::RawOrBox<8, 1>>::new(0u64);
-        assert!(matches!(storage.inner.0, super::RawOrBoxInner::Box(_)));
+        let storage = TestObject::<super::RawOrBox<8, 1>>::new(0u64);
+        assert!(matches!(storage.storage.0, super::RawOrBoxInner::Box(_)));
     }
 
     struct SetDropped<'a>(&'a mut bool);
@@ -318,8 +318,8 @@ mod tests {
     fn storage_drop() {
         fn check_drop<S: Storage>() {
             let mut dropped = false;
-            let storage = TestStorage::<S>::new(SetDropped(&mut dropped));
-            assert!(!*unsafe { storage.inner.ptr().cast::<SetDropped>().as_ref() }.0);
+            let storage = TestObject::<S>::new(SetDropped(&mut dropped));
+            assert!(!*unsafe { storage.storage.ptr().cast::<SetDropped>().as_ref() }.0);
             drop(storage);
             assert!(dropped);
         }
@@ -335,7 +335,7 @@ mod tests {
     #[test]
     fn storage_dst() {
         fn check_dst<S: Storage>() {
-            drop(TestStorage::<S>::new(()));
+            drop(TestObject::<S>::new(()));
         }
         check_dst::<super::Raw<{ size_of::<SetDropped>() }, { align_of::<SetDropped>() }>>();
         #[cfg(feature = "alloc")]
