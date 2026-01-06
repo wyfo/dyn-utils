@@ -37,39 +37,39 @@ impl MacroArgs for DynStorageOpts {
     }
 }
 
-pub(super) fn dyn_storage_impl(
+pub(super) fn dyn_object_impl(
     r#trait: ItemTrait,
     opts: DynStorageOpts,
 ) -> syn::Result<TokenStream> {
-    let mut dyn_storage = DynStorage::new(&r#trait, opts);
+    let mut dyn_object = DynObject::new(&r#trait, opts);
     for item in r#trait.items.iter() {
         match item {
             TraitItem::Fn(method) => {
                 if !is_dispatchable(method) {
                     bail_method!(method, "method is not dispatchable");
                 }
-                dyn_storage.methods.push(method);
+                dyn_object.methods.push(method);
             }
             TraitItem::Type(ty) => {
                 if !ty.generics.params.is_empty() {
                     bail!(ty.ident, "generic associated type is not supported");
                 }
                 let gen_param = format_ident!("__Type{}", ty.ident);
-                dyn_storage.types.push((gen_param, ty));
+                dyn_object.types.push((gen_param, ty));
             }
             _ => bail!(item, "unsupported item"),
         }
     }
-    fields!(dyn_storage => crate_, remote);
-    let dyn_trait = dyn_storage.dyn_trait();
-    let generics = dyn_storage.generics();
-    let vtable_fields = (dyn_storage.methods.iter()).map(|m| dyn_storage.vtable_field(m));
-    let vtable_methods = (dyn_storage.methods.iter()).map(|m| dyn_storage.vtable_method(m));
-    let impl_methods = (dyn_storage.methods.iter()).map(|m| dyn_storage.impl_method(m));
-    let impl_types = (dyn_storage.types.iter()).map(|t| dyn_storage.impl_type(t));
+    fields!(dyn_object => crate_, remote);
+    let dyn_trait = dyn_object.dyn_trait();
+    let generics = dyn_object.generics();
+    let vtable_fields = (dyn_object.methods.iter()).map(|m| dyn_object.vtable_field(m));
+    let vtable_methods = (dyn_object.methods.iter()).map(|m| dyn_object.vtable_method(m));
+    let impl_methods = (dyn_object.methods.iter()).map(|m| dyn_object.impl_method(m));
+    let impl_types = (dyn_object.types.iter()).map(|t| dyn_object.impl_type(t));
     let (_, ty_gen, where_clause) = r#trait.generics.split_for_impl();
     let remote_with_args = quote!(#remote #ty_gen);
-    let opt_trait = dyn_storage.include_trait.then_some(&r#trait);
+    let opt_trait = dyn_object.include_trait.then_some(&r#trait);
     Ok(quote! {
         #opt_trait
 
@@ -119,7 +119,7 @@ pub(super) fn dyn_storage_impl(
     })
 }
 
-struct DynStorage<'a> {
+struct DynObject<'a> {
     r#trait: &'a ItemTrait,
     include_trait: bool,
     crate_: Path,
@@ -129,14 +129,14 @@ struct DynStorage<'a> {
     methods: Vec<&'a TraitItemFn>,
 }
 
-impl<'a> DynStorage<'a> {
+impl<'a> DynObject<'a> {
     fn new(r#trait: &'a ItemTrait, opts: DynStorageOpts) -> Self {
-        let has_dyn_storage_attr = || {
-            (r#trait.attrs.iter()).any(|attr| last_segments(attr.path(), "dyn_storage").is_some())
+        let has_dyn_object_attr = || {
+            (r#trait.attrs.iter()).any(|attr| last_segments(attr.path(), "dyn_object").is_some())
         };
         Self {
             r#trait,
-            include_trait: opts.remote.is_none() || has_dyn_storage_attr(),
+            include_trait: opts.remote.is_none() || has_dyn_object_attr(),
             crate_: opts.crate_.unwrap_or_else(crate_name),
             remote: opts.remote.unwrap_or_else(|| r#trait.ident.clone().into()),
             bounds: opts.bounds,

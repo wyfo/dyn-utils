@@ -76,14 +76,14 @@ impl<'__dyn, __Storage: crate::storage::Storage> crate::DynObject<dyn Any + '__d
     }
 }
 
-#[crate::dyn_storage(crate = crate, remote = Future)]
-#[crate::dyn_storage(crate = crate, remote = Future, bounds = Send)]
+#[crate::dyn_object(crate = crate, remote = Future)]
+#[crate::dyn_object(crate = crate, remote = Future, bounds = Send)]
 trait Future {
     type Output;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output>;
 }
 
-#[crate::dyn_storage(crate = crate, remote = Iterator)]
+#[crate::dyn_object(crate = crate, remote = Iterator)]
 trait Iterator {
     type Item;
     fn next(&mut self) -> Option<Self::Item>;

@@ -4,10 +4,10 @@ use proc_macro::TokenStream;
 use syn::{Path, meta::ParseNestedMeta, parse::Parse, parse_macro_input, parse_quote};
 
 use crate::{
-    dyn_storage::dyn_storage_impl, dyn_trait::dyn_trait_impl, macros::bail, sync::sync_impl,
+    dyn_object::dyn_object_impl, dyn_trait::dyn_trait_impl, macros::bail, sync::sync_impl,
 };
 
-mod dyn_storage;
+mod dyn_object;
 mod dyn_trait;
 mod macros;
 mod sync;
@@ -51,6 +51,6 @@ pub fn sync(args: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn dyn_storage(args: TokenStream, item: TokenStream) -> TokenStream {
-    macro_impl(dyn_storage_impl, item, args)
+pub fn dyn_object(args: TokenStream, item: TokenStream) -> TokenStream {
+    macro_impl(dyn_object_impl, item, args)
 }

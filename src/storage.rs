@@ -257,7 +257,7 @@ mod tests {
 
     use crate::{DynObject, storage::Storage};
 
-    #[crate::dyn_storage(crate = crate)]
+    #[crate::dyn_object(crate = crate)]
     trait Test {}
     impl Test for () {}
     impl<const N: usize> Test for [u8; N] {}

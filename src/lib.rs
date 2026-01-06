@@ -23,9 +23,10 @@ pub mod storage;
 pub use dyn_utils_macros::*;
 pub use elain::*;
 
-/// Default storage for return-position `impl Trait`.
+/// Default storage for [`DynObject`], and used in [`dyn_trait`] macro.
 pub type DefaultStorage = storage::RawOrBox<{ 128 * size_of::<usize>() }>;
 
+/// A trait object whose data is stored in a generic [`Storage`].
 pub struct DynObject<Dyn: private::DynTrait + ?Sized, S: Storage = DefaultStorage> {
     storage: S,
     vtable: &'static Dyn::VTable,
