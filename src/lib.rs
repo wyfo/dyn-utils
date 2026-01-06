@@ -6,9 +6,11 @@
 extern crate alloc;
 
 use core::{
+    any::{Any, TypeId},
     fmt, hint,
     marker::PhantomData,
     mem,
+    mem::ManuallyDrop,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -23,10 +25,24 @@ pub mod storage;
 pub use dyn_utils_macros::*;
 pub use elain::*;
 
+use crate::impls::any_impl;
+
 /// Default storage for [`DynObject`], and used in [`dyn_trait`] macro.
 pub type DefaultStorage = storage::RawOrBox<{ 128 * size_of::<usize>() }>;
 
 /// A trait object whose data is stored in a generic [`Storage`].
+///
+/// [`dyn_object`] can be used to make a trait compatible with `DynObject`
+///
+/// # Examples
+///
+/// ```rust
+/// # use dyn_utils::DynObject;
+/// let future: DynObject<dyn Future<Output = usize>> = DynObject::new(async { 42 });
+/// # futures::executor::block_on(async move {
+/// assert_eq!(future.await, 42);
+/// # });
+/// ```
 pub struct DynObject<Dyn: private::DynTrait + ?Sized, S: Storage = DefaultStorage> {
     storage: S,
     vtable: &'static Dyn::VTable,
@@ -124,6 +140,12 @@ impl<Dyn: private::DynTrait<VTable: fmt::Debug> + ?Sized, S: Storage + fmt::Debu
     }
 }
 
+// Putting this in impls module make these methods appears before others,
+// so it has to be explicitly put after other methods
+any_impl!(dyn Any);
+any_impl!(dyn Any + Send);
+any_impl!(dyn Any + Send + Sync);
+
 pub enum TrySync<F: Future> {
     Sync(F::Output),
     Async(F),
@@ -156,13 +178,18 @@ impl<F: Future> Future for TrySync<F> {
 #[cfg(test)]
 mod tests {
     use core::{
+        any::Any,
         future::{Ready, ready},
         pin::pin,
     };
 
     use futures::FutureExt;
 
-    use crate::TrySync;
+    use crate::{TrySync, impls::any_test};
+
+    any_test!(dyn_any, dyn Any);
+    any_test!(dyn_any_send, dyn Any + Send);
+    any_test!(dyn_any_send_sync, dyn Any + Send + Sync);
 
     #[test]
     fn try_sync() {
