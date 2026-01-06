@@ -1,4 +1,5 @@
 use std::{
+    future::ready,
     hint::black_box,
     mem::MaybeUninit,
     pin::{Pin, pin},
@@ -76,6 +77,13 @@ impl Trait for Sync {
     }
 }
 
+struct NoDrop;
+impl Trait for NoDrop {
+    fn future(&self, s: &str) -> impl Future<Output = usize> {
+        ready(s.len())
+    }
+}
+
 impl Trait2 for () {
     async fn future(&self, s: &str) -> usize {
         s.len()
@@ -98,6 +106,12 @@ impl Trait4 for () {
     }
 }
 
+impl Trait4 for NoDrop {
+    fn future<'a>(&'a self, s: &'a str) -> StackFuture<'a, usize, 128> {
+        StackFuture::from(ready(s.len()))
+    }
+}
+
 impl Trait5 for () {
     async fn future(&self, s: &str) -> usize {
         s.len()
@@ -113,6 +127,12 @@ fn dyn_utils_future(b: Bencher) {
 #[divan::bench]
 fn dyn_utils_future_no_alloc(b: Bencher) {
     let test = black_box(Box::new(()) as Box<dyn DynTrait<Raw<128>>>);
+    b.bench_local(|| now_or_never!(test.future("test")));
+}
+
+#[divan::bench]
+fn dyn_utils_future_no_drop(b: Bencher) {
+    let test = black_box(Box::new(NoDrop) as Box<dyn DynTrait>);
     b.bench_local(|| now_or_never!(test.future("test")));
 }
 
@@ -195,6 +215,12 @@ fn async_trait_future(b: Bencher) {
 #[divan::bench]
 fn stackfuture_future(b: Bencher) {
     let test = black_box(Box::new(()) as Box<dyn Trait4>);
+    b.bench_local(|| now_or_never!(test.future("test")));
+}
+
+#[divan::bench]
+fn stackfuture_future_no_drop(b: Bencher) {
+    let test = black_box(Box::new(NoDrop) as Box<dyn Trait4>);
     b.bench_local(|| now_or_never!(test.future("test")));
 }
 
