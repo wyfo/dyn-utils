@@ -117,7 +117,7 @@ impl<Dyn: private::DynTrait<VTable: fmt::Debug> + ?Sized, S: Storage + fmt::Debu
     for DynObject<Dyn, S>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DynStorage")
+        f.debug_struct("DynObject")
             .field("inner", &self.storage)
             .field("vtable", &self.vtable)
             .finish()

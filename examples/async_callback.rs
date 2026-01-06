@@ -2,7 +2,7 @@ use dyn_utils::DynObject;
 use futures::FutureExt;
 
 #[dyn_utils::dyn_trait] // make the trait dyn-compatible
-#[dyn_trait(dyn_utils::dyn_object)] // make the dyn-compatible trait usable with DynStorage
+#[dyn_trait(dyn_utils::dyn_object)] // make the dyn-compatible trait usable with DynObject
 trait Callback {
     #[dyn_trait(try_sync)] // add `call_try_sync` method with synchronous shortcut
     fn call(&self, arg: &str) -> impl Future<Output = ()> + Send;

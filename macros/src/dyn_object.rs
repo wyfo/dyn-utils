@@ -13,13 +13,13 @@ use crate::{
 };
 
 #[derive(Default)]
-pub(super) struct DynStorageOpts {
+pub(super) struct DynObjectOps {
     bounds: Punctuated<Path, Token![+]>,
     crate_: Option<Path>,
     remote: Option<Path>,
 }
 
-impl MacroArgs for DynStorageOpts {
+impl MacroArgs for DynObjectOps {
     fn parse_meta(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
         if meta.path.is_ident("bounds") {
             meta.input.parse::<Token![=]>()?;
@@ -37,10 +37,7 @@ impl MacroArgs for DynStorageOpts {
     }
 }
 
-pub(super) fn dyn_object_impl(
-    r#trait: ItemTrait,
-    opts: DynStorageOpts,
-) -> syn::Result<TokenStream> {
+pub(super) fn dyn_object_impl(r#trait: ItemTrait, opts: DynObjectOps) -> syn::Result<TokenStream> {
     let mut dyn_object = DynObject::new(&r#trait, opts);
     for item in r#trait.items.iter() {
         match item {
@@ -130,7 +127,7 @@ struct DynObject<'a> {
 }
 
 impl<'a> DynObject<'a> {
-    fn new(r#trait: &'a ItemTrait, opts: DynStorageOpts) -> Self {
+    fn new(r#trait: &'a ItemTrait, opts: DynObjectOps) -> Self {
         let has_dyn_object_attr = || {
             (r#trait.attrs.iter()).any(|attr| last_segments(attr.path(), "dyn_object").is_some())
         };
