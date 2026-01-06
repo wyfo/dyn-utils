@@ -5,7 +5,7 @@ trait Callback {
     fn call(&self, arg: &str) -> impl Future<Output = ()> + Send;
 }
 
-trait DynCallback<S: dyn_utils::storage::Storage = dyn_utils::DefaultStorage> {
+trait DynCallback<S: dyn_utils::storage::Storage = dyn_utils::storage::DefaultStorage> {
     fn call<'a>(&'a self, arg: &'a str) -> DynObject<dyn Future<Output = ()> + Send + 'a, S>;
 }
 

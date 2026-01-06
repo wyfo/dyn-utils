@@ -262,7 +262,7 @@ impl<'a> DynMethod<'a> {
         let crate_ = &self.crate_;
         let storage = self.storage.as_ref()?;
         let default_storage =
-            default_storage.unwrap_or_else(|| parse_quote!(#crate_::DefaultStorage));
+            default_storage.unwrap_or_else(|| parse_quote!(#crate_::storage::DefaultStorage));
         Some(parse_quote_spanned! { default_storage.span() =>
             #storage: #crate_::storage::Storage = #default_storage
         })

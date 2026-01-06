@@ -13,6 +13,9 @@ use core::{
 
 pub use elain::{Align, Alignment};
 
+/// Default storage for [`DynObject`](crate::DynObject), and used in [`dyn_trait`](crate::dyn_trait) macro.
+pub type DefaultStorage = RawOrBox<{ 128 * size_of::<usize>() }>;
+
 /// A storage that can be used to store dynamic type-erased objects.
 ///
 /// # Safety

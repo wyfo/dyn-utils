@@ -5,15 +5,17 @@
 //! generic [`storage`].
 //!
 //! [`storage::Raw`] stores object in place, making `DynObject<dyn Trait, storage::Raw>`
-//! allocation-free. On the other hand, [`storage::RawOrBox`], used in [`DefaultStorage`],
-//! falls back to an allocated `Box` if  the object is too big to fit in place.
-//! <br>
-//! These storages thus makes `DynObject` a good alternative to `Box` when it comes to write a
+//! allocation-free. On the other hand, [`storage::RawOrBox`] falls back to an allocated `Box` if
+//! the object is too big to fit in place.
+//!
+//! Saving one allocation makes `DynObject` a good alternative to `Box` when it comes to write a
 //! [dyn-compatible] version of a trait with return-position `impl Trait`, such as async methods.
 //!
 //! # Examples
 //!
 //! ```rust
+//! use dyn_utils::DynObject;
+//!
 //! trait Callback {
 //!     fn call(&self, arg: &str) -> impl Future<Output = ()> + Send;
 //! }
@@ -64,17 +66,18 @@ use core::{
     pin::Pin,
 };
 
-use crate::{impls::any_impl, storage::Storage};
+use crate::{
+    impls::any_impl,
+    storage::{DefaultStorage, Storage},
+};
 
 mod impls;
+mod macros;
 #[doc(hidden)]
 pub mod private;
 pub mod storage;
 
-pub use dyn_utils_macros::*;
-
-/// Default storage for [`DynObject`], and used in [`dyn_trait`] macro.
-pub type DefaultStorage = storage::RawOrBox<{ 128 * size_of::<usize>() }>;
+pub use macros::*;
 
 /// A trait object whose data is stored in a generic [`Storage`].
 ///

@@ -5,6 +5,7 @@ use futures::FutureExt;
 #[dyn_trait(dyn_utils::dyn_object)] // make the dyn-compatible trait usable with DynObject
 trait Callback {
     #[dyn_trait(try_sync)] // add `call_try_sync` method with synchronous shortcut
+    #[dyn_trait(storage = dyn_utils::storage::Raw<128>)] // use `Raw<128> as default storage
     fn call(&self, arg: &str) -> impl Future<Output = ()> + Send;
 }
 

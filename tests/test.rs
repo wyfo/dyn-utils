@@ -11,7 +11,7 @@ trait Test {
     type GAT<T>;
     type Result;
     fn method(&self) -> Self::Result;
-    #[dyn_trait(storage = dyn_utils::DefaultStorage, try_sync)]
+    #[dyn_trait(storage = dyn_utils::storage::DefaultStorage, try_sync)]
     async fn future<'a>(&self, s: &'a str) -> &'a str;
     #[dyn_trait(try_sync)]
     async fn future2<'a>(&self, s: &'a str) -> &'a str;
