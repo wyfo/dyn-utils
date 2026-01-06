@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["Align","Box","Raw","RawOrBox"],"trait":["Alignment","FromBox","Storage"],"type":["DefaultStorage"]};

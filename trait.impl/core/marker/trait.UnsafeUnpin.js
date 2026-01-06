@@ -1,0 +1,9 @@
+(function() {
+    const implementors = Object.fromEntries([["dyn_utils",[["impl&lt;const SIZE: <a class=\"primitive\" href=\"https://doc.rust-lang.org/nightly/core/primitive.usize.html\">usize</a>, const ALIGN: <a class=\"primitive\" href=\"https://doc.rust-lang.org/nightly/core/primitive.usize.html\">usize</a> = { align_of::&lt;usize&gt;() }&gt; !UnsafeUnpin for <a class=\"struct\" href=\"dyn_utils/storage/struct.Raw.html\" title=\"struct dyn_utils::storage::Raw\">Raw</a>&lt;SIZE, ALIGN&gt;",1,1,["dyn_utils::storage::Raw"]],["impl&lt;const SIZE: <a class=\"primitive\" href=\"https://doc.rust-lang.org/nightly/core/primitive.usize.html\">usize</a>, const ALIGN: <a class=\"primitive\" href=\"https://doc.rust-lang.org/nightly/core/primitive.usize.html\">usize</a> = { align_of::&lt;usize&gt;() }&gt; !UnsafeUnpin for <a class=\"struct\" href=\"dyn_utils/storage/struct.RawOrBox.html\" title=\"struct dyn_utils::storage::RawOrBox\">RawOrBox</a>&lt;SIZE, ALIGN&gt;",1,1,["dyn_utils::storage::RawOrBox"]],["impl UnsafeUnpin for <a class=\"struct\" href=\"dyn_utils/storage/struct.Box.html\" title=\"struct dyn_utils::storage::Box\">Box</a>",0,1,["dyn_utils::storage::Box"]],["impl&lt;Dyn, S&gt; UnsafeUnpin for <a class=\"struct\" href=\"dyn_utils/struct.DynObject.html\" title=\"struct dyn_utils::DynObject\">DynObject</a>&lt;Dyn, S&gt;<div class=\"where\">where\n    S: UnsafeUnpin,\n    Dyn: ?<a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/marker/trait.Sized.html\" title=\"trait core::marker::Sized\">Sized</a>,</div>",0,1,["dyn_utils::DynObject"]]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":59,"fragment_lengths":[1517]}
