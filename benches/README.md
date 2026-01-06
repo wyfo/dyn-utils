@@ -1,6 +1,6 @@
 # Benchmark
 
-The following benchmark compares `dyn-utils` with alternatives, and measures the effect of its different optimizations. It is executed on GitHub runners, so the results have to be taken with a grain of salt, but they still gives a good approximation.
+The following benchmark compares `dyn-utils` with alternatives and measures the effect of its different optimizations. It is executed on GitHub runners, so the results should be taken with a grain of salt, but they still give a good approximation.
 
 ## Results
 
@@ -48,10 +48,10 @@ comparison                                      fastest       │ slowest       
 
 ## Analysis
 
-As expected, allocation-based alternatives are a lot slower. `dynify` doesn't perform well on x86-64, and is anyway behind `dyn-utils`.
+As expected, allocation-based alternatives are significantly slower. `dynify` does not perform well on x86-64 and is, in any case, behind dyn-utils.
 
-Only `stackfuture` manages to do a bit better than `dyn-utils`. The reasons behind this difference should be those mentioned in [README](../README.md#stackfuture): no drop optimization and inlined vtable. By the way, `dyn-utils` becomes faster on x86-64 when it can use the drop optimization.
+Only `stackfuture` manages to perform slightly better than `dyn-utils`. The reasons behind this difference are likely those mentioned in the [README](../README.md#stackfuture): the lack of drop optimization and the use of an inlined vtable. Notably, `dyn-utils` becomes faster on x86-64 when it can take advantage of the drop optimization.
 
-As also expected, *try_sync* optimization provides a significant performance improvement.
+As also expected, the *try_sync* optimization provides a significant performance improvement.
 
 [^1]: https://github.com/wyfo/dyn-utils/actions/runs/20764391881/attempts/2

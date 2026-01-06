@@ -1,14 +1,14 @@
 //! A utility library for working with [trait objects].
 //!
-//! Trait objects, i.e. `dyn Trait`, are unsized and requires to be stored in a container
-//! like `Box`. This crate provides [`DynObject`], a container for trait object with a
+//! Trait objects (i.e. `dyn Trait`) are unsized and therefore need to be stored in a container
+//! such as `Box`. This crate provides [`DynObject`], a container for trait objects with a
 //! generic [`storage`].
 //!
-//! [`storage::Raw`] stores object in place, making `DynObject<dyn Trait, storage::Raw>`
+//! [`storage::Raw`] stores objects in place, making `DynObject<dyn Trait, storage::Raw>`
 //! allocation-free. On the other hand, [`storage::RawOrBox`] falls back to an allocated `Box` if
-//! the object is too big to fit in place.
+//! the object is too large to fit in place.
 //!
-//! Saving one allocation makes `DynObject` a good alternative to `Box` when it comes to write a
+//! Avoiding one allocation makes `DynObject` a good alternative to `Box` when writing a
 //! [dyn-compatible] version of a trait with return-position `impl Trait`, such as async methods.
 //!
 //! # Examples
@@ -36,7 +36,7 @@
 //! }
 //! ```
 //!
-//! This crate also provides [`dyn_trait`] proc-macro to do the same as above:
+//! This crate also provides [`dyn_trait`] proc-macro to achieve the same result as above:
 //!
 //! ```rust
 //! #[dyn_utils::dyn_trait] // generates `DynCallback` trait
