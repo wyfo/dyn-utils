@@ -45,6 +45,23 @@ impl Test for () {
     async fn empty(&self) {}
 }
 
+#[dyn_utils::dyn_object(bounds = Send)]
+trait MyFuture {
+    type Output;
+    fn poll(
+        self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Self::Output>;
+}
+
+#[dyn_utils::dyn_object]
+trait Iterator {
+    type Item;
+    fn next(&mut self) -> Option<Self::Item>;
+    fn size_hint(&self) -> (usize, Option<usize>);
+    fn nth(&mut self, n: usize) -> Option<Self::Item>;
+}
+
 #[test]
 fn test() {
     let test = Box::new(()) as Box<dyn Test2<Result = usize>>;

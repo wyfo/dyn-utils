@@ -31,7 +31,7 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: code coverage
-        run: cargo +nightly llvm-cov --workspace ${{ matrix.features }} --fail-under-functions 90 --fail-under-lines 90 --fail-under-regions 90
+        run: cargo +nightly llvm-cov ${{ matrix.features }} --fail-under-functions 90 --fail-under-lines 90 --fail-under-regions 90
       - name: check doc
         run: cargo doc
         env:
