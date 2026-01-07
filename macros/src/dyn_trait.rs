@@ -4,7 +4,7 @@ use heck::ToPascalCase;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use syn::{
-    CapturedParam, GenericParam, Generics, ImplItem, ImplItemFn, ItemTrait, Lifetime,
+    Attribute, CapturedParam, GenericParam, Generics, ImplItem, ImplItemFn, ItemTrait, Lifetime,
     LifetimeParam, Path, Receiver, Signature, Token, TraitItem, TraitItemConst, TraitItemFn,
     TraitItemType, Type, TypeImplTrait, TypeParamBound, TypeReference, TypeTraitObject,
     WherePredicate, meta::ParseNestedMeta, parse_quote, parse_quote_spanned, spanned::Spanned,
@@ -17,7 +17,7 @@ use crate::{
     sync::{is_sync_const, sync_fn, try_sync_fn},
     utils::{
         IteratorExt, PatternAsArg, fn_args, future_output, impl_method, is_dispatchable,
-        is_not_generic, return_type,
+        is_not_generic, last_segment, return_type,
     },
 };
 
@@ -56,8 +56,17 @@ pub(super) fn dyn_trait_impl(
     mut r#trait: ItemTrait,
     opts: DynTraitOpts,
 ) -> syn::Result<TokenStream> {
-    let mut dyn_trait = DynTrait::new(&r#trait, opts);
     let dyn_trait_attrs = extract_dyn_trait_attrs(&mut r#trait)?;
+    if !r#trait.generics.params.is_empty()
+        && (dyn_trait_attrs.iter())
+            .any(|attr| last_segment(attr.meta.path(), "dyn_object").is_some())
+    {
+        bail!(
+            r#trait.generics.params,
+            "generic parameters are not supported in combination to `dyn_object`"
+        );
+    }
+    let mut dyn_trait = DynTrait::new(&r#trait, opts);
     for item in r#trait.items.iter_mut() {
         match item {
             TraitItem::Type(ty) if is_not_generic(ty) => {
@@ -389,12 +398,12 @@ impl VisitMut for CapturedLifetimes {
     }
 }
 
-fn extract_dyn_trait_attrs(r#trait: &mut ItemTrait) -> syn::Result<Vec<TokenStream>> {
+fn extract_dyn_trait_attrs(r#trait: &mut ItemTrait) -> syn::Result<Vec<Attribute>> {
     (r#trait.attrs)
         .extract_if(.., |attr| attr.path().is_ident("dyn_trait"))
         .map(|attr| {
             let meta = &attr.meta.require_list()?.tokens;
-            Ok(quote!(#[#meta]))
+            Ok(parse_quote!(#[#meta]))
         })
         .collect()
 }

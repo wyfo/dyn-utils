@@ -1,21 +1,54 @@
 /// Make a trait compatible with `DynObject`.
 ///
+///
+///
 /// # Arguments
 ///
 /// - `bounds`: Additional bounds, e.g. `Send`, allowing to use `DynObject<dyn Trait + Send>`.
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// # use std::{pin::Pin, task::{Poll, Context}};
-/// # use dyn_utils_macros::dyn_object;
+/// # use dyn_utils::{dyn_object,DynObject};
 ///
 /// // Allows using both `DynObject<dyn Future>` and `DynObject<dyn Future + Send>`
 /// #[dyn_object]
 /// #[dyn_object(bounds = Send)]
-/// trait MyFuture {
-///     type Output;
-///     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output>;
+/// trait Callback {
+///     fn call(&self, arg: &str);
+/// }
+///
+/// impl<F: Fn(&str)> Callback for F {
+///     fn call(&self, arg: &str) {
+///         self(arg)
+///     }
+/// }
+///
+/// // no allocation
+/// let callback = DynObject::<dyn Callback>::new(|arg: &str| println!("{arg}"));
+/// ```
+///
+/// # Limitations
+///
+/// When combined to [`dyn_trait`], generic parameters are not supported.
+///
+/// ```compile_fail
+/// #[dyn_utils::dyn_trait(trait = DynCallback)]
+/// #[dyn_trait(dyn_utils::dyn_object)]
+/// trait Callback<T> {
+///     fn call(&self, arg: T) -> impl Future<Output = ()> + Send;
+/// }
+/// ```
+///
+/// When possible, using associated types instead overcomes this limitation
+///
+/// ```rust
+/// #[dyn_utils::dyn_trait(trait = DynCallback)]
+/// #[dyn_trait(dyn_utils::dyn_object)]
+/// trait Callback {
+///     type Arg;
+///     fn call(&self, arg: Self::Arg) -> impl Future<Output = ()> + Send;
 /// }
 /// ```
 pub use dyn_utils_macros::dyn_object;
