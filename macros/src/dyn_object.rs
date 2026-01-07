@@ -9,7 +9,7 @@ use syn::{
 use crate::{
     MacroArgs, crate_name,
     macros::{bail, bail_method, fields, try_match},
-    utils::{IteratorExt, fn_args, impl_method, is_dispatchable, last_segments, respan},
+    utils::{IteratorExt, fn_args, impl_method, is_dispatchable, last_segment, pinned_ref, respan},
 };
 
 #[derive(Default)]
@@ -125,9 +125,8 @@ struct DynObject<'a> {
 
 impl<'a> DynObject<'a> {
     fn new(r#trait: &'a ItemTrait, opts: DynObjectOps) -> Self {
-        let has_dyn_object_attr = || {
-            (r#trait.attrs.iter()).any(|attr| last_segments(attr.path(), "dyn_object").is_some())
-        };
+        let has_dyn_object_attr =
+            || (r#trait.attrs.iter()).any(|attr| last_segment(attr.path(), "dyn_object").is_some());
         Self {
             r#trait,
             include_trait: opts.remote.is_none() || has_dyn_object_attr(),
@@ -266,11 +265,15 @@ impl VisitMut for ReplaceSelfWithDyn {
 
 fn vtable_fn_pointer(method: &TraitItemFn, new_vtable: bool) -> TokenStream {
     let unsafety = &method.sig.unsafety;
-    // We don't care about self lifetime because it is erased anyway
+    let recv = method.sig.receiver().unwrap();
+    let recv_lt = match &recv.reference {
+        Some((_, lt)) => lt,
+        None => &pinned_ref(&recv.ty).unwrap().lifetime,
+    };
     let storage = match VtableReceiver::new(method) {
-        VtableReceiver::Ref => quote!(&__Storage),
-        VtableReceiver::Mut => quote!(&mut __Storage),
-        VtableReceiver::Pinned => quote!(::core::pin::Pin<&mut __Storage>),
+        VtableReceiver::Ref => quote!(&#recv_lt __Storage),
+        VtableReceiver::Mut => quote!(&#recv_lt mut __Storage),
+        VtableReceiver::Pinned => quote!(::core::pin::Pin<&#recv_lt mut __Storage>),
     };
     let params = method
         .sig

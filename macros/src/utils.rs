@@ -3,7 +3,7 @@ use quote::{ToTokens, quote};
 use syn::{
     Block, FnArg, GenericArgument, GenericParam, ImplItemFn, PatIdent, Path, PathArguments,
     PathSegment, ReturnType, Signature, TraitItemFn, TraitItemType, Type, TypeImplTrait,
-    TypeParamBound, Visibility, visit_mut::VisitMut,
+    TypeParamBound, TypeReference, Visibility, parse_quote, visit_mut::VisitMut,
 };
 
 use crate::macros::try_match;
@@ -28,8 +28,8 @@ pub(crate) fn is_not_generic(ty: &TraitItemType) -> bool {
 }
 
 pub(crate) fn is_dispatchable(method: &TraitItemFn) -> bool {
-    let has_dyn_trait_receiver =
-        (method.sig.receiver()).is_some_and(|recv| recv.reference.is_some() || is_pinned(&recv.ty));
+    let has_dyn_trait_receiver = (method.sig.receiver())
+        .is_some_and(|recv| recv.reference.is_some() || pinned_ref(&recv.ty).is_some());
     let has_no_generic_parameter_except_lifetime =
         (method.sig.generics.params.iter()).all(|p| matches!(p, GenericParam::Lifetime(_)));
     has_dyn_trait_receiver && has_no_generic_parameter_except_lifetime
@@ -39,18 +39,21 @@ pub(crate) fn return_type(sig: &Signature) -> Option<&Type> {
     try_match!(&sig.output, ReturnType::Type(_, ty) => ty.as_ref())
 }
 
-pub(crate) fn last_segments<'a>(path: &'a Path, ident: &str) -> Option<&'a PathSegment> {
+pub(crate) fn last_segment<'a>(path: &'a Path, ident: &str) -> Option<&'a PathSegment> {
     path.segments.last().filter(|s| s.ident == ident)
 }
 
-pub(crate) fn is_pinned(ty: &Type) -> bool {
-    matches!(ty, Type::Path(path) if last_segments(&path.path, "Pin").is_some())
+pub(crate) fn pinned_ref(ty: &Type) -> Option<&TypeReference> {
+    let pin = last_segment(&try_match!(ty, Type::Path)?.path, "Pin")?;
+    let args = try_match!(&pin.arguments, PathArguments::AngleBracketed)?;
+    let arg_ty = try_match!(args.args.first()?, GenericArgument::Type)?;
+    try_match!(arg_ty, Type::Reference).filter(|r| r.elem == parse_quote!(Self))
 }
 
 pub(crate) fn future_output(ret: &TypeImplTrait) -> Option<&Type> {
     let future = (ret.bounds.iter())
         .filter_map(try_match!(TypeParamBound::Trait))
-        .find_map(|bound| last_segments(&bound.path, "Future"))?;
+        .find_map(|bound| last_segment(&bound.path, "Future"))?;
     let args = try_match!(&future.arguments, PathArguments::AngleBracketed)?;
     let output = (args.args.iter())
         .filter_map(try_match!(GenericArgument::AssocType))
