@@ -8,7 +8,7 @@ unsoundness may still remain.*
 using a git dependency:*
 
 ```toml
-dyn-fn = { git = "https://github.com/wyfo/dyn-fn" }
+dyn-utils = { git = "https://github.com/wyfo/dyn-utils" }
 ```
 
 A utility library for working with [trait objects].
