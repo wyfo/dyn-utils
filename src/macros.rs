@@ -3,8 +3,6 @@
 /// # Arguments
 ///
 /// - `bounds`: Additional bounds, e.g. `Send`, allowing to use `DynObject<dyn Trait + Send>`.
-/// - `remote`: Path to the concrete trait used in the implementation; the trait declaration must
-///   be pasted. It allows supporting traits defined in other crates.
 ///
 /// # Examples
 ///
@@ -13,9 +11,9 @@
 /// # use dyn_utils_macros::dyn_object;
 ///
 /// // Allows using both `DynObject<dyn Future>` and `DynObject<dyn Future + Send>`
-/// #[dyn_object(remote = Future)]
-/// #[dyn_object(remote = Future, bounds = Send)]
-/// trait Future {
+/// #[dyn_object]
+/// #[dyn_object(bounds = Send)]
+/// trait MyFuture {
 ///     type Output;
 ///     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output>;
 /// }
