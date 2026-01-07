@@ -1,4 +1,4 @@
-use dyn_utils::DynObject;
+use dyn_utils::object::DynObject;
 use futures::FutureExt;
 
 trait Callback {

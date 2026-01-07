@@ -72,30 +72,30 @@ pub(super) fn dyn_object_impl(r#trait: ItemTrait, opts: DynObjectOps) -> syn::Re
 
         const _: () = {
             #[derive(Debug)]
-            pub struct __VTable {
+            pub struct __Vtable {
                 __drop_in_place: Option<unsafe fn(::core::ptr::NonNull<()>)>,
                 __layout: ::core::alloc::Layout,
                 #(#vtable_fields,)*
             }
 
-            impl<#(#generics,)*> #crate_::private::DynTrait for dyn #dyn_trait #where_clause {
-                type VTable = __VTable;
-                fn drop_in_place(vtable: &Self::VTable) -> Option<unsafe fn(core::ptr::NonNull<()>)> {
+            impl<#(#generics,)*> #crate_::object::DynTrait for dyn #dyn_trait #where_clause {
+                type Vtable = __Vtable;
+                fn drop_in_place_fn(vtable: &Self::Vtable) -> Option<unsafe fn(core::ptr::NonNull<()>)> {
                     vtable.__drop_in_place
                 }
-                fn layout(vtable: &Self::VTable) -> core::alloc::Layout {
+                fn layout(vtable: &Self::Vtable) -> core::alloc::Layout {
                     vtable.__layout
                 }
             }
 
             // SAFETY: vtable fields respect trait contract
-            unsafe impl<#(#generics,)* __Dyn: #dyn_trait> #crate_::private::VTable<__Dyn>
+            unsafe impl<#(#generics,)* __Dyn: #dyn_trait> #crate_::object::Vtable<__Dyn>
                 for dyn #dyn_trait #where_clause
             {
-                fn vtable<__Storage: #crate_::storage::Storage>() -> &'static Self::VTable {
+                fn vtable<__Storage: #crate_::storage::Storage>() -> &'static Self::Vtable {
                     &const {
-                        __VTable {
-                            __drop_in_place: #crate_::private::drop_in_place_fn::<__Dyn>(),
+                        __Vtable {
+                            __drop_in_place: <Self as #crate_::object::Vtable<__Dyn>>::DROP_IN_PLACE_FN,
                             __layout: core::alloc::Layout::new::<__Dyn>(),
                             #(#vtable_methods,)*
                         }
@@ -187,14 +187,17 @@ impl<'a> DynObject<'a> {
         let method_name = &method.sig.ident;
         let args = fn_args(&method.sig).skip(1).collect_vec();
         let erased_args = args.iter().map(|arg| quote!(::core::mem::transmute(#arg)));
-        let self_as = match VTableReceiver::new(method) {
-            VTableReceiver::Ref => quote!(as_ref),
-            VTableReceiver::Mut => quote!(as_mut),
-            VTableReceiver::Pinned => quote!(as_pinned_mut),
+        let self_as = match VtableReceiver::new(method) {
+            VtableReceiver::Ref => quote!(as_ref),
+            VtableReceiver::Mut => quote!(as_mut),
+            VtableReceiver::Pinned => quote!(as_pinned_mut),
         };
         let fn_ptr = vtable_fn_pointer(method, true);
         quote! {
-            #[allow(clippy::useless_transmute)]
+            #[allow(
+                clippy::missing_transmute_annotations,
+                clippy::useless_transmute
+            )]
             // SAFETY: transmutation are only used to erase lifetime,
             // the real lifetime being enforced in the trait implementation
             #method_name: unsafe {
@@ -209,10 +212,10 @@ impl<'a> DynObject<'a> {
 
     fn impl_method(&self, method: &TraitItemFn) -> ImplItemFn {
         let method_name = &method.sig.ident;
-        let self_as = match VTableReceiver::new(method) {
-            VTableReceiver::Ref => quote!(storage),
-            VTableReceiver::Mut => quote!(storage_mut),
-            VTableReceiver::Pinned => quote!(storage_pinned_mut),
+        let self_as = match VtableReceiver::new(method) {
+            VtableReceiver::Ref => quote!(storage),
+            VtableReceiver::Mut => quote!(storage_mut),
+            VtableReceiver::Pinned => quote!(storage_pinned_mut),
         };
         let args = fn_args(&method.sig).skip(1);
         let fn_ptr = vtable_fn_pointer(method, false);
@@ -231,13 +234,13 @@ impl<'a> DynObject<'a> {
     }
 }
 
-enum VTableReceiver {
+enum VtableReceiver {
     Ref,
     Mut,
     Pinned,
 }
 
-impl VTableReceiver {
+impl VtableReceiver {
     fn new(method: &TraitItemFn) -> Self {
         let recv = method.sig.receiver().unwrap();
         if recv.reference.is_none() {
@@ -264,10 +267,10 @@ impl VisitMut for ReplaceSelfWithDyn {
 fn vtable_fn_pointer(method: &TraitItemFn, new_vtable: bool) -> TokenStream {
     let unsafety = &method.sig.unsafety;
     // We don't care about self lifetime because it is erased anyway
-    let storage = match VTableReceiver::new(method) {
-        VTableReceiver::Ref => quote!(&__Storage),
-        VTableReceiver::Mut => quote!(&mut __Storage),
-        VTableReceiver::Pinned => quote!(::core::pin::Pin<&mut __Storage>),
+    let storage = match VtableReceiver::new(method) {
+        VtableReceiver::Ref => quote!(&__Storage),
+        VtableReceiver::Mut => quote!(&mut __Storage),
+        VtableReceiver::Pinned => quote!(::core::pin::Pin<&mut __Storage>),
     };
     let params = method
         .sig

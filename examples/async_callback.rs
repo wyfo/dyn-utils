@@ -1,4 +1,4 @@
-use dyn_utils::DynObject;
+use dyn_utils::object::DynObject;
 use futures::FutureExt;
 
 #[dyn_utils::dyn_trait] // make the trait dyn-compatible

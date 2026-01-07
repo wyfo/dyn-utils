@@ -14,7 +14,7 @@
 //! # Examples
 //!
 //! ```rust
-//! use dyn_utils::DynObject;
+//! use dyn_utils::object::DynObject;
 //!
 //! trait Callback {
 //!     fn call(&self, arg: &str) -> impl Future<Output = ()> + Send;
@@ -39,11 +39,13 @@
 //! This crate also provides [`dyn_trait`] proc-macro to achieve the same result as above:
 //!
 //! ```rust
+//! # #[cfg(feature = "macros")]
 //! #[dyn_utils::dyn_trait] // generates `DynCallback` trait
 //! trait Callback {
 //!     fn call(&self, arg: &str) -> impl Future<Output = ()> + Send;
 //! }
 //!
+//! # #[cfg(feature = "macros")]
 //! async fn exec_callback(callback: &dyn DynCallback) {
 //!     callback.call("Hello world!").await;
 //! }
@@ -60,158 +62,111 @@
 extern crate alloc;
 
 use core::{
-    any::{Any, TypeId},
-    fmt,
-    marker::PhantomData,
+    hint, mem,
     pin::Pin,
-};
-
-use crate::{
-    impls::any_impl,
-    storage::{DefaultStorage, Storage},
+    task::{Context, Poll},
 };
 
 mod impls;
+#[cfg(feature = "macros")]
 mod macros;
-#[doc(hidden)]
-pub mod private;
+pub mod object;
 pub mod storage;
 
-pub use macros::*;
+#[cfg(feature = "macros")]
+pub use macros::{dyn_object, dyn_trait, sync};
+pub use object::DynObject;
+#[cfg(all(doc, not(feature = "macros")))]
+#[doc(hidden)]
+pub fn dyn_trait() {}
+#[cfg(all(doc, not(feature = "macros")))]
+#[doc(hidden)]
+pub fn dyn_object() {}
 
-/// A trait object whose data is stored in a generic [`Storage`].
+/// An async wrapper with an optimized synchronous execution path.
 ///
-/// [`dyn_object`] proc-macro can be used to make a trait compatible with `DynObject`.
+/// It is used in combination with `Future` trait objects, such as
+/// `DynObject<dyn Future<Output=T>>`.
 ///
 /// # Examples
 ///
 /// ```rust
-/// # use dyn_utils::DynObject;
-/// let future: DynObject<dyn Future<Output = usize>> = DynObject::new(async { 42 });
-/// # futures::executor::block_on(async move {
-/// assert_eq!(future.await, 42);
-/// # });
+/// # use dyn_utils::{DynObject, TrySync};
+///
+/// trait Callback {
+///     fn call(&self, arg: &str) -> TrySync<DynObject<dyn Future<Output = ()>>>;
+/// }
+///
+/// struct Print;
+/// impl Callback for Print {
+///     fn call(&self, arg: &str) -> TrySync<DynObject<dyn Future<Output = ()>>> {
+///         println!("{arg}");
+///         TrySync::Sync(())
+///     }
+/// }
 /// ```
-pub struct DynObject<Dyn: private::DynTrait + ?Sized, S: Storage = DefaultStorage> {
-    storage: S,
-    vtable: &'static Dyn::VTable,
-    _phantom: PhantomData<Dyn>,
+pub enum TrySync<F: Future> {
+    /// Optimized synchronous execution path.
+    Sync(F::Output),
+    /// Asynchronous wrapper
+    Async(F),
+    /// Synchronous execution path already polled
+    SyncPolled,
 }
 
-// SAFETY: DynObject is just a wrapper around `Dyn`
-unsafe impl<Dyn: Send + private::DynTrait + ?Sized, S: Storage> Send for DynObject<Dyn, S> {}
-// SAFETY: DynObject is just a wrapper around `Dyn`
-unsafe impl<Dyn: Sync + private::DynTrait + ?Sized, S: Storage> Sync for DynObject<Dyn, S> {}
-impl<Dyn: Unpin + private::DynTrait + ?Sized, S: Storage> Unpin for DynObject<Dyn, S> {}
-
-impl<S: Storage, Dyn: private::DynTrait + ?Sized> DynObject<Dyn, S> {
-    /// Constructs a new `DynObject` from an object implementing the trait
-    pub fn new<T>(object: T) -> Self
-    where
-        Dyn: private::VTable<T>,
-    {
-        Self {
-            storage: S::new(object),
-            vtable: Dyn::vtable::<S>(),
-            _phantom: PhantomData,
+impl<F: Future> TrySync<F> {
+    /// # Safety
+    ///
+    /// `self` must be `Self::Sync` variant.
+    #[cfg_attr(coverage_nightly, coverage(off))] // Because of `unreachable_unchecked` branch
+    #[inline(always)]
+    unsafe fn take_sync(&mut self) -> F::Output {
+        match mem::replace(self, Self::SyncPolled) {
+            Self::Sync(res) => res,
+            // SAFETY: as per function contract
+            _ => unsafe { hint::unreachable_unchecked() },
         }
     }
+}
 
-    /// Construct a new `DynObject` from a boxed object implementing the trait
-    #[cfg(feature = "alloc")]
-    pub fn from_box<T>(boxed: alloc::boxed::Box<T>) -> Self
-    where
-        S: storage::FromBox,
-        Dyn: private::VTable<T>,
-    {
-        Self {
-            storage: S::from_box(boxed),
-            vtable: Dyn::vtable::<S>(),
-            _phantom: PhantomData,
+impl<F: Future> Future for TrySync<F> {
+    type Output = F::Output;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // SAFETY: pinned data is not moved
+        match unsafe { self.get_unchecked_mut() } {
+            // SAFETY: res is `Self::Sync`
+            res @ TrySync::Sync(_) => Poll::Ready(unsafe { res.take_sync() }),
+            // SAFETY: `fut` is pinned as `self` is
+            TrySync::Async(fut) => unsafe { Pin::new_unchecked(fut) }.poll(cx),
+            _ => panic!("future polled after completion"),
         }
     }
-
-    #[doc(hidden)]
-    pub fn vtable(&self) -> &'static Dyn::VTable {
-        self.vtable
-    }
-
-    #[doc(hidden)]
-    pub fn storage(&self) -> &S {
-        &self.storage
-    }
-
-    #[doc(hidden)]
-    pub fn storage_mut(&mut self) -> &mut S {
-        &mut self.storage
-    }
-
-    #[doc(hidden)]
-    pub fn storage_pinned_mut(self: Pin<&mut Self>) -> Pin<&mut S> {
-        // SAFETY: `self.storage` is structurally pinned
-        unsafe { self.map_unchecked_mut(|this| &mut this.storage) }
-    }
-
-    #[doc(hidden)]
-    pub fn insert<T>(this: &mut Option<Self>, object: T) -> &mut T
-    where
-        Dyn: private::VTable<T>,
-    {
-        let storage = this.insert(DynObject::new(object));
-        // SAFETY: storage has been initialized with `T`
-        unsafe { storage.storage_mut().as_mut::<T>() }
-    }
-
-    #[doc(hidden)]
-    pub fn insert_pinned<T>(this: Pin<&mut Option<Self>>, object: T) -> Pin<&mut T>
-    where
-        Dyn: private::VTable<T>,
-    {
-        // SAFETY: the returned reference cannot is structurally pinned
-        unsafe { this.map_unchecked_mut(|opt| Self::insert(opt, object)) }
-    }
 }
-
-impl<Dyn: private::DynTrait + ?Sized, S: Storage> Drop for DynObject<Dyn, S> {
-    fn drop(&mut self) {
-        if let Some(drop_inner) = Dyn::drop_in_place(self.vtable) {
-            // SAFETY: the storage data is no longer accessed after the call,
-            // and is matched by the vtable as per function contract.
-            unsafe { drop_inner(self.storage.ptr_mut()) };
-        }
-        let layout = Dyn::layout(self.vtable);
-        // SAFETY: the storage data is no longer accessed after the call,
-        // and is matched by the vtable as per function contract.
-        unsafe { self.storage.drop_in_place(layout) };
-    }
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-impl<Dyn: private::DynTrait<VTable: fmt::Debug> + ?Sized, S: Storage + fmt::Debug> fmt::Debug
-    for DynObject<Dyn, S>
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DynObject")
-            .field("inner", &self.storage)
-            .field("vtable", &self.vtable)
-            .finish()
-    }
-}
-
-// Putting this in impls module make these methods appears before others,
-// so it has to be explicitly put after other methods
-any_impl!(dyn Any);
-any_impl!(dyn Any + Send);
-any_impl!(dyn Any + Send + Sync);
 
 #[cfg_attr(coverage_nightly, coverage(off))] // Because of `unreachable_unchecked` branch
 #[cfg(test)]
 mod tests {
-    use core::any::Any;
+    use core::{
+        future::{Ready, ready},
+        pin::pin,
+    };
 
-    use crate::impls::any_test;
+    use futures::FutureExt;
 
-    any_test!(dyn_any, dyn Any);
-    any_test!(dyn_any_send, dyn Any + Send);
-    any_test!(dyn_any_send_sync, dyn Any + Send + Sync);
+    use crate::TrySync;
+
+    #[test]
+    fn try_sync() {
+        for try_sync in [TrySync::Sync(42), TrySync::Async(ready(42))] {
+            assert_eq!(try_sync.now_or_never(), Some(42));
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "future polled after completion")]
+    fn try_sync_polled_after_completion() {
+        let mut try_sync = pin!(TrySync::<Ready<i32>>::Sync(42));
+        assert_eq!(try_sync.as_mut().now_or_never(), Some(42));
+        try_sync.now_or_never();
+    }
 }

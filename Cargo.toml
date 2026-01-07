@@ -7,12 +7,13 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["alloc"]
+default = ["alloc", "macros"]
+macros = ["dep:dyn-utils-macros"]
 alloc = []
 
 [dependencies]
 elain = "0.3"
-dyn-utils-macros = { path = "macros" }
+dyn-utils-macros = { path = "macros", optional = true }
 
 [dev-dependencies]
 async-trait = "0.1.89"
@@ -20,6 +21,7 @@ divan = "0.1"
 dynify = "0.1.2"
 dynosaur = "0.3.0"
 futures = "0.3.31"
+macrotest = "1.2.0"
 stackfuture = "0.3.1"
 trybuild = "1.0.114"
 
@@ -29,6 +31,11 @@ bench = false
 [[bench]]
 name = "comparison"
 harness = false
+required-features = ["macros"]
+
+[[example]]
+name = "async_callback"
+required-features = ["macros"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }

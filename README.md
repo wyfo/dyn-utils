@@ -130,7 +130,8 @@ alternative ecosystem, when I was looking for a name for the crate — yes, I in
 to name it *dynify*.
 
 The comparison section above shows that this crate still adds value to the ecosystem,
-which is why I continued working on it.
+which is why I continued working on it. But to be honest, I wouldn't have started this
+project if I had known about `stackfuture` before.
 
 [^1]: In practice, it is not hard to support allocated storage reuse in `dyn-utils`, but
 it has several drawbacks: ergonomics (as it requires passing the `DynObject` as an

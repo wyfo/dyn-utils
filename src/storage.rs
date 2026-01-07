@@ -301,8 +301,35 @@ mod tests {
 
     use crate::{DynObject, storage::Storage};
 
-    #[crate::dyn_object(crate = crate)]
     trait Test {}
+    const _: () = {
+        #[derive(Debug)]
+        pub struct __Vtable {
+            __drop_in_place: Option<unsafe fn(::core::ptr::NonNull<()>)>,
+            __layout: ::core::alloc::Layout,
+        }
+        impl<'__lt> crate::object::DynTrait for dyn Test + '__lt {
+            type Vtable = __Vtable;
+            fn drop_in_place_fn(
+                vtable: &Self::Vtable,
+            ) -> Option<unsafe fn(core::ptr::NonNull<()>)> {
+                vtable.__drop_in_place
+            }
+            fn layout(vtable: &Self::Vtable) -> core::alloc::Layout {
+                vtable.__layout
+            }
+        }
+        unsafe impl<'__lt, __Dyn: Test + '__lt> crate::object::Vtable<__Dyn> for dyn Test + '__lt {
+            fn vtable<__Storage: crate::storage::Storage>() -> &'static Self::Vtable {
+                &const {
+                    __Vtable {
+                        __drop_in_place: <Self as crate::object::Vtable<__Dyn>>::DROP_IN_PLACE_FN,
+                        __layout: core::alloc::Layout::new::<__Dyn>(),
+                    }
+                }
+            }
+        }
+    };
     impl Test for () {}
     impl<const N: usize> Test for [u8; N] {}
     impl Test for u64 {}
@@ -316,13 +343,13 @@ mod tests {
         {
             let storages = [(); 2].map(TestObject::<super::Raw<0, ALIGN>>::new);
             for s in &storages {
-                assert!(s.storage.ptr().cast::<Align<ALIGN>>().is_aligned());
+                assert!(s.storage().ptr().cast::<Align<ALIGN>>().is_aligned());
             }
             const { assert!(ALIGN < 2048) };
             assert!(
                 storages
                     .iter()
-                    .any(|s| !s.storage.ptr().cast::<Align<2048>>().is_aligned())
+                    .any(|s| !s.storage().ptr().cast::<Align<2048>>().is_aligned())
             );
         }
         check_alignment::<1>();
@@ -337,9 +364,9 @@ mod tests {
         fn check_variant<const N: usize>(variant: impl Fn(&super::RawOrBox<8>) -> bool) {
             let array = core::array::from_fn::<u8, N, _>(|i| i as u8);
             let storage = TestObject::<super::RawOrBox<8>>::new(array);
-            assert!(variant(&storage.storage));
+            assert!(variant(storage.storage()));
             assert_eq!(
-                unsafe { storage.storage.ptr().cast::<[u8; N]>().read() },
+                unsafe { storage.storage().ptr().cast::<[u8; N]>().read() },
                 array
             );
         }
@@ -347,7 +374,7 @@ mod tests {
         check_variant::<64>(|s| matches!(s.0, super::RawOrBoxInner::Box(_)));
 
         let storage = TestObject::<super::RawOrBox<8, 1>>::new(0u64);
-        assert!(matches!(storage.storage.0, super::RawOrBoxInner::Box(_)));
+        assert!(matches!(storage.storage().0, super::RawOrBoxInner::Box(_)));
     }
 
     struct SetDropped<'a>(&'a mut bool);
@@ -363,7 +390,7 @@ mod tests {
         fn check_drop<S: Storage>() {
             let mut dropped = false;
             let storage = TestObject::<S>::new(SetDropped(&mut dropped));
-            assert!(!*unsafe { storage.storage.ptr().cast::<SetDropped>().as_ref() }.0);
+            assert!(!*unsafe { storage.storage().ptr().cast::<SetDropped>().as_ref() }.0);
             drop(storage);
             assert!(dropped);
         }

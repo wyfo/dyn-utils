@@ -18,8 +18,10 @@ jobs:
         run: cargo fmt -- --config "unstable_features=true,imports_granularity=Crate,group_imports=StdExternalCrate,format_code_in_doc_comments=true"
       - name: clippy
         run: cargo clippy ${{ matrix.features }} --all-targets -- -D warnings
-      - name: install rust-src for trybuild test
+      - name: install rust-src for trybuild
         run: rustup component add rust-src
+      - name: install cargo-expand for macrotest
+        run: cargo install cargo-expand
       - name: test
         run: cargo test ${{ matrix.features }}
       - name: install miri
