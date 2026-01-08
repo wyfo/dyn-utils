@@ -142,5 +142,6 @@ to fit on the stack, the allocation cost is likely negligible.
 destructor, even if they do not capture any droppable variables. `stackfuture` is therefore
 more optimized for this use case, until `rustc` is improved on the subject.
 
+[miri]: https://github.com/rust-lang/miri
 [trait objects]: https://doc.rust-lang.org/std/keyword.dyn.html
 [dyn-compatible]: https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility
