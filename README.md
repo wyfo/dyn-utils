@@ -70,7 +70,7 @@ async fn exec_callback(callback: &dyn DynCallback) {
 - Compile-time assertions for heapless storage of trait objects.
 - Fallback to allocated storage if a trait object does not fit in place.
 - Synchronous execution-path optimization for asynchronous methods, bringing significant
-  performance improvements.
+  performance improvements; see [example](examples/async_callback.rs).
 - Clean ergonomics with procedural macros.
 - [Better performance](benches/README.md) than most alternatives.
 
