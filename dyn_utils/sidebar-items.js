@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"attr":["dyn_object","dyn_trait","sync"],"mod":["storage"],"struct":["DynObject"]};
+window.SIDEBAR_ITEMS = {"attr":["dyn_object","dyn_trait","sync"],"enum":["TrySync"],"mod":["object","storage"]};
