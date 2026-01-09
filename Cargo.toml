@@ -7,13 +7,14 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["alloc", "macros"]
-macros = ["dep:dyn-utils-macros"]
+default = ["alloc", "macros", "const_panic"]
+macros = ["dyn-utils-macros"]
 alloc = []
 
 [dependencies]
-elain = "0.3"
+const_panic = { version = "0.2", optional = true }
 dyn-utils-macros = { path = "macros", optional = true }
+elain = "0.3"
 
 [dev-dependencies]
 async-trait = "0.1.89"

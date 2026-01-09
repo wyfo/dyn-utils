@@ -104,7 +104,20 @@ where
 
     /// Constructs a new `Raw` storage, with compile-time assertion that `T` can be stored.
     pub const fn new<T>(data: T) -> Self {
-        const { assert!(Self::can_store::<T>()) };
+        #[cfg(feature = "const_panic")]
+        const {
+            let (size, align) = (size_of::<T>(), align_of::<T>());
+            #[rustfmt::skip]
+            const_panic::concat_assert!(
+                Self::can_store::<T>(),
+                "object (size=", size, ", align=", align, ")",
+                " doesn't fit into Raw<", SIZE, ", ", ALIGN, "> storage"
+            );
+        }
+        #[cfg(not(feature = "const_panic"))]
+        const {
+            assert!(Self::can_store::<T>());
+        }
         // SAFETY: assertion above ensures function contract
         unsafe { Self::new_unchecked::<T>(data) }
     }
