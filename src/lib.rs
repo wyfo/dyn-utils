@@ -58,6 +58,12 @@
 #![no_std]
 #![forbid(missing_docs)]
 
+#[cfg(all(target_env = "msvc", target_pointer_width = "32"))]
+compile_error!(
+    "32-bit MSVC targets are unsupported due to known miscompilations \
+     (see rust-lang/rust#112480)."
+);
+
 #[cfg(any(feature = "alloc", doc))]
 extern crate alloc;
 
