@@ -108,12 +108,12 @@ impl<Dyn: DynTrait + ?Sized, S: Storage> Drop for DynObject<Dyn, S> {
         if let Some(drop_inner) = Dyn::drop_in_place_fn(self.vtable) {
             // SAFETY: the storage data is no longer accessed after the call,
             // and is matched by the vtable as per function contract.
-            unsafe { drop_inner(self.storage.ptr_mut()) };
+            unsafe { drop_inner(self.storage_mut().ptr_mut()) };
         }
         let layout = Dyn::layout(self.vtable);
         // SAFETY: the storage data is no longer accessed after the call,
         // and is matched by the vtable as per function contract.
-        unsafe { self.storage.drop_in_place(layout) };
+        unsafe { self.storage_mut().drop_in_place(layout) };
     }
 }
 

@@ -4,6 +4,7 @@
 use alloc::boxed::Box as StdBox;
 use core::{
     alloc::Layout,
+    cell::UnsafeCell,
     hint::unreachable_unchecked,
     marker::{PhantomData, PhantomPinned},
     mem::MaybeUninit,
@@ -87,7 +88,7 @@ pub struct Raw<const SIZE: usize, const ALIGN: usize = { align_of::<usize>() }>
 where
     Align<ALIGN>: Alignment,
 {
-    data: MaybeUninit<[u8; SIZE]>,
+    data: UnsafeCell<MaybeUninit<[u8; SIZE]>>,
     _align: Align<ALIGN>,
     _not_send_sync: PhantomData<*mut ()>,
     _pinned: PhantomPinned,
@@ -127,14 +128,14 @@ where
     /// `data` must have size and alignment lesser or equal to the generic parameters.
     const unsafe fn new_unchecked<T>(data: T) -> Self {
         let mut raw = Self {
-            data: MaybeUninit::uninit(),
+            data: UnsafeCell::new(MaybeUninit::uninit()),
             _align: Align::NEW,
             _not_send_sync: PhantomData,
             _pinned: PhantomPinned,
         };
         // SAFETY: function contract guarantees that `raw.data` size and alignment
         // matches `data` ones; alignment is obtained through `_align` field and `repr(C)`
-        unsafe { raw.data.as_mut_ptr().cast::<T>().write(data) };
+        unsafe { raw.data.get_mut().as_mut_ptr().cast::<T>().write(data) };
         raw
     }
 }
@@ -148,10 +149,10 @@ where
         Self::new(data)
     }
     fn ptr(&self) -> NonNull<()> {
-        NonNull::from(&self.data).cast()
+        NonNull::new(self.data.get()).unwrap().cast()
     }
     fn ptr_mut(&mut self) -> NonNull<()> {
-        NonNull::from(&mut self.data).cast()
+        NonNull::from(self.data.get_mut()).cast()
     }
     unsafe fn drop_in_place(&mut self, _layout: Layout) {}
 }
@@ -308,7 +309,7 @@ where
 #[cfg(test)]
 #[allow(clippy::undocumented_unsafe_blocks)]
 mod tests {
-    use core::mem;
+    use core::{any::Any, cell::RefCell, mem};
 
     use elain::{Align, Alignment};
 
@@ -428,5 +429,20 @@ mod tests {
         check_dst::<super::RawOrBox<{ size_of::<SetDropped>() }>>();
         #[cfg(feature = "alloc")]
         check_dst::<super::RawOrBox<0>>();
+    }
+
+    #[test]
+    fn storage_interior_mutability() {
+        fn check<S: Storage + core::fmt::Debug>() {
+            let obj = DynObject::<dyn Any, S>::new(RefCell::new(false));
+            *obj.downcast_ref::<RefCell<bool>>().unwrap().borrow_mut() = true;
+            assert!(obj.downcast::<RefCell<bool>>().unwrap().into_inner());
+        }
+        check::<super::Raw<16>>();
+        #[cfg(feature = "alloc")]
+        check::<super::Box>();
+        check::<super::RawOrBox<16>>();
+        #[cfg(feature = "alloc")]
+        check::<super::RawOrBox<0>>();
     }
 }
