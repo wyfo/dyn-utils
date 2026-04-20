@@ -10,6 +10,7 @@ use divan::Bencher;
 use dyn_utils::{DynObject, storage::Raw};
 use dynify::Dynify;
 use futures::future::OptionFuture;
+use smallbox::{SmallBox, smallbox};
 use stackfuture::StackFuture;
 
 // `futures::future::FutureExt::now_or_never` is not properly inlined
@@ -67,6 +68,10 @@ trait Trait5 {
     async fn future(&self, s: &str) -> usize;
 }
 
+trait Trait6 {
+    fn future<'a>(&'a self, s: &'a str) -> SmallBox<dyn Future<Output = usize> + 'a, [usize; 16]>;
+}
+
 impl Trait for () {}
 
 struct Sync;
@@ -118,6 +123,18 @@ impl Trait5 for () {
     }
 }
 
+impl Trait6 for () {
+    fn future<'a>(&'a self, s: &'a str) -> SmallBox<dyn Future<Output = usize> + 'a, [usize; 16]> {
+        smallbox!(async move { s.len() })
+    }
+}
+
+impl Trait6 for NoDrop {
+    fn future<'a>(&'a self, s: &'a str) -> SmallBox<dyn Future<Output = usize> + 'a, [usize; 16]> {
+        smallbox!(ready(s.len()))
+    }
+}
+
 #[divan::bench]
 fn dyn_utils_future(b: Bencher) {
     let test = black_box(Box::new(()) as Box<dyn DynTrait>);
@@ -127,6 +144,12 @@ fn dyn_utils_future(b: Bencher) {
 #[divan::bench]
 fn dyn_utils_future_no_alloc(b: Bencher) {
     let test = black_box(Box::new(()) as Box<dyn DynTrait<Raw<128>>>);
+    b.bench_local(|| now_or_never!(test.future("test")));
+}
+
+#[divan::bench]
+fn dyn_utils_future_no_drop(b: Bencher) {
+    let test = black_box(Box::new(NoDrop) as Box<dyn DynTrait>);
     b.bench_local(|| now_or_never!(test.future("test")));
 }
 
@@ -227,6 +250,18 @@ fn stackfuture_future_no_alloc_no_drop(b: Bencher) {
 #[divan::bench]
 fn dynosaur_future(b: Bencher) {
     let test = black_box(DynTrait5::from_box(Box::new(())));
+    b.bench_local(|| now_or_never!(test.future("test")));
+}
+
+#[divan::bench]
+fn smallbox_future(b: Bencher) {
+    let test = black_box(Box::new(()) as Box<dyn Trait6>);
+    b.bench_local(|| now_or_never!(test.future("test")));
+}
+
+#[divan::bench]
+fn smallbox_future_no_drop(b: Bencher) {
+    let test = black_box(Box::new(NoDrop) as Box<dyn Trait6>);
     b.bench_local(|| now_or_never!(test.future("test")));
 }
 
