@@ -5,6 +5,12 @@ members = ["macros"]
 name = "dyn-utils"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/wyfo/dyn-utils"
+readme = "README.md"
+keywords = ["async", "no_std", "no_alloc"]
+categories = ["asynchronous", "no-std", "no-std::no-alloc"]
+description = "A utility library for working with trait objects."
 
 [features]
 default = ["alloc", "macros", "const_panic"]
