@@ -19,10 +19,6 @@ pub(super) fn sync_impl(method: ImplItemFn, _: ()) -> syn::Result<TokenStream> {
     })
 }
 
-pub(crate) fn try_sync_fn(sig: &Signature) -> Ident {
-    format_ident!("{}_try_sync", sig.ident)
-}
-
 pub(crate) fn sync_fn(sig: &Signature) -> Ident {
     format_ident!("{}_sync", sig.ident)
 }

@@ -14,7 +14,7 @@ use syn::{
 use crate::{
     MacroArgs, crate_name,
     macros::{bail, bail_method, fields, try_match},
-    sync::{is_sync_const, sync_fn, try_sync_fn},
+    sync::{is_sync_const, sync_fn},
     utils::{
         IteratorExt, PatternAsArg, fn_args, future_output, impl_method, is_dispatchable,
         is_not_generic, last_segment, return_type,
@@ -148,16 +148,17 @@ impl DynTrait {
         let dyn_method = DynMethod::new(&self.crate_, &self.trait_generics, method);
         self.generic_storages
             .extend(dyn_method.generic_storage(attrs.storage));
-        if attrs.try_sync {
+        if attrs.maybe_sync {
             self.additional_trait_items
                 .push(dyn_method.sync_method()?.into());
             self.additional_trait_items
                 .push(dyn_method.is_sync_const().into());
-            self.impl_items.push(dyn_method.try_sync_impl().into());
-            self.dyn_items.push(dyn_method.try_sync_method().into());
+            self.impl_items.push(dyn_method.maybe_sync_impl().into());
+            self.dyn_items.push(dyn_method.maybe_sync_method().into());
+        } else {
+            self.impl_items.push(dyn_method.impl_method().into());
+            self.dyn_items.push(dyn_method.dyn_method.into());
         }
-        self.impl_items.push(dyn_method.impl_method().into());
-        self.dyn_items.push(dyn_method.dyn_method.into());
         Ok(())
     }
 }
@@ -165,7 +166,7 @@ impl DynTrait {
 #[derive(Default)]
 pub(crate) struct MethodAttrs {
     storage: Option<Path>,
-    try_sync: bool,
+    maybe_sync: bool,
 }
 
 impl MethodAttrs {
@@ -184,8 +185,8 @@ impl MethodAttrs {
                 if meta.path.is_ident("storage") {
                     meta.input.parse::<Token![=]>()?;
                     attrs.storage = Some(meta.input.parse()?);
-                } else if meta.path.is_ident("try_sync") {
-                    attrs.try_sync = true
+                } else if meta.path.is_ident("maybe_sync") {
+                    attrs.maybe_sync = true
                 } else {
                     bail!(meta.path, "unknown attribute");
                 }
@@ -292,7 +293,10 @@ impl<'a> DynMethod<'a> {
 
     fn sync_method(&self) -> syn::Result<TraitItemFn> {
         let Some(output) = self.rpit.as_ref().and_then(future_output) else {
-            bail_method!(self.dyn_method, "`try_sync` must be used on async methods");
+            bail_method!(
+                self.dyn_method,
+                "`maybe_sync` must be used on async methods"
+            );
         };
         let args = fn_args(self.orig_sig).skip(1);
         Ok(TraitItemFn {
@@ -313,22 +317,21 @@ impl<'a> DynMethod<'a> {
         parse_quote!(#[doc(hidden)] const #is_sync: bool = false;)
     }
 
-    fn try_sync_signature(&self) -> Signature {
+    fn maybe_sync_signature(&self) -> Signature {
         let crate_ = &self.crate_;
         let mut signature = self.dyn_method.sig.clone();
-        signature.ident = try_sync_fn(self.orig_sig);
         let output = return_type(&self.dyn_method.sig).unwrap();
-        signature.output = parse_quote!(-> #crate_::TrySync<#output>);
+        signature.output = parse_quote!(-> #crate_::MaybeSync<#output>);
         signature
     }
 
-    fn try_sync_method(&self) -> TraitItemFn {
+    fn maybe_sync_method(&self) -> TraitItemFn {
         let mut method = self.dyn_method.clone();
-        method.sig = self.try_sync_signature();
+        method.sig = self.maybe_sync_signature();
         method
     }
 
-    fn try_sync_impl(&self) -> ImplItemFn {
+    fn maybe_sync_impl(&self) -> ImplItemFn {
         let crate_ = &self.crate_;
         let is_sync = is_sync_const(self.orig_sig);
         let sync_method = sync_fn(self.orig_sig);
@@ -336,12 +339,12 @@ impl<'a> DynMethod<'a> {
         let args = fn_args(self.orig_sig).collect_vec();
         let block = parse_quote!({
            if __Dyn::#is_sync {
-                #crate_::TrySync::Sync(__Dyn::#sync_method(#(#args),*))
+                #crate_::MaybeSync::Sync(__Dyn::#sync_method(#(#args),*))
             } else {
-                #crate_::TrySync::Async(#crate_::DynObject::new(__Dyn::#async_method(#(#args,)*)))
+                #crate_::MaybeSync::Async(#crate_::DynObject::new(__Dyn::#async_method(#(#args,)*)))
             }
         });
-        impl_method(self.try_sync_signature(), block)
+        impl_method(self.maybe_sync_signature(), block)
     }
 }
 

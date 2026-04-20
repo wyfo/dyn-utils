@@ -52,6 +52,6 @@ As expected, allocation-based alternatives are significantly slower. `dynify` do
 
 Only `stackfuture` manages to perform slightly better than `dyn-utils`. The reasons behind this difference are likely those mentioned in the [README](../README.md#stackfuture): the lack of drop optimization and the use of an inlined vtable. Notably, `dyn-utils` becomes faster on x86-64 when it can take advantage of the drop optimization.
 
-As also expected, the *try_sync* optimization provides a significant performance improvement.
+As also expected, the *maybe_sync* optimization provides a significant performance improvement.
 
 [^1]: https://github.com/wyfo/dyn-utils/actions/runs/20764391881/attempts/2

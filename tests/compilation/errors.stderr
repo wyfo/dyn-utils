@@ -50,19 +50,19 @@ error: expected identifier
 40 |     #[dyn_trait(storage = ?)]
    |                           ^
 
-error: `try_sync` must be used on async methods
+error: `maybe_sync` must be used on async methods
   --> tests/compilation/errors.rs:47:5
    |
 47 |     fn method(&self) -> impl Iterator<Item = ()>;
    |     ^^
 
-error: `try_sync` must be used on async methods
+error: `maybe_sync` must be used on async methods
   --> tests/compilation/errors.rs:53:5
    |
 53 |     fn method(&self) -> impl Future;
    |     ^^
 
-error: `try_sync` must be used on async methods
+error: `maybe_sync` must be used on async methods
   --> tests/compilation/errors.rs:59:5
    |
 59 |     fn method(&self) -> impl Future<Item = ()>;

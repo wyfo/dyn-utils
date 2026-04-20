@@ -25,8 +25,11 @@ macro_rules! now_or_never {
 
 #[dyn_utils::dyn_trait]
 trait Trait {
-    #[dyn_trait(try_sync)]
     async fn future(&self, s: &str) -> usize {
+        s.len()
+    }
+    #[dyn_trait(maybe_sync)]
+    async fn future_maybe_sync(&self, s: &str) -> usize {
         s.len()
     }
     fn future_with_storage<'a, 'storage>(
@@ -77,7 +80,7 @@ impl Trait for () {}
 struct Sync;
 impl Trait for Sync {
     #[dyn_utils::sync]
-    async fn future(&self, s: &str) -> usize {
+    async fn future_maybe_sync(&self, s: &str) -> usize {
         s.len()
     }
 }
@@ -160,15 +163,15 @@ fn dyn_utils_future_no_alloc_no_drop(b: Bencher) {
 }
 
 #[divan::bench]
-fn dyn_utils_future_try_sync(b: Bencher) {
+fn dyn_utils_future_maybe_sync(b: Bencher) {
     let test = black_box(Box::new(Sync) as Box<dyn DynTrait>);
-    b.bench_local(|| now_or_never!(test.future_try_sync("test")));
+    b.bench_local(|| now_or_never!(test.future_maybe_sync("test")));
 }
 
 #[divan::bench]
-fn dyn_utils_future_try_sync_fallback(b: Bencher) {
+fn dyn_utils_future_maybe_sync_fallback(b: Bencher) {
     let test = black_box(Box::new(()) as Box<dyn DynTrait>);
-    b.bench_local(|| now_or_never!(test.future_try_sync("test")));
+    b.bench_local(|| now_or_never!(test.future_maybe_sync("test")));
 }
 
 #[divan::bench]

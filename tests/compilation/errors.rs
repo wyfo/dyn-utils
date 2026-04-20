@@ -43,19 +43,19 @@ trait InvalidStorage {
 
 #[dyn_utils::dyn_trait]
 trait TrySyncOnNonAsyncMethod {
-    #[dyn_trait(try_sync)]
+    #[dyn_trait(maybe_sync)]
     fn method(&self) -> impl Iterator<Item = ()>;
 }
 
 #[dyn_utils::dyn_trait]
 trait TrySyncOnDummyFuture {
-    #[dyn_trait(try_sync)]
+    #[dyn_trait(maybe_sync)]
     fn method(&self) -> impl Future;
 }
 
 #[dyn_utils::dyn_trait]
 trait TrySyncOnDummyFuture2 {
-    #[dyn_trait(try_sync)]
+    #[dyn_trait(maybe_sync)]
     fn method(&self) -> impl Future<Item = ()>;
 }
 
@@ -84,7 +84,7 @@ trait ForCoverage {
     type Result;
     fn method(&self) -> Self::Result;
     async fn empty(&self);
-    #[dyn_trait(try_sync)]
+    #[dyn_trait(maybe_sync)]
     async fn future(&self);
     nothing!();
 }

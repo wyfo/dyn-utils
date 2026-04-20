@@ -97,21 +97,21 @@ pub fn dyn_object() {}
 /// # Examples
 ///
 /// ```rust
-/// # use dyn_utils::{DynObject, TrySync};
+/// # use dyn_utils::{DynObject, MaybeSync};
 ///
 /// trait Callback {
-///     fn call(&self, arg: &str) -> TrySync<DynObject<dyn Future<Output = ()>>>;
+///     fn call(&self, arg: &str) -> MaybeSync<DynObject<dyn Future<Output = ()>>>;
 /// }
 ///
 /// struct Print;
 /// impl Callback for Print {
-///     fn call(&self, arg: &str) -> TrySync<DynObject<dyn Future<Output = ()>>> {
+///     fn call(&self, arg: &str) -> MaybeSync<DynObject<dyn Future<Output = ()>>> {
 ///         println!("{arg}");
-///         TrySync::Sync(())
+///         MaybeSync::Sync(())
 ///     }
 /// }
 /// ```
-pub enum TrySync<F: Future> {
+pub enum MaybeSync<F: Future> {
     /// Optimized synchronous execution path.
     Sync(F::Output),
     /// Asynchronous wrapper
@@ -120,7 +120,7 @@ pub enum TrySync<F: Future> {
     SyncPolled,
 }
 
-impl<F: Future> TrySync<F> {
+impl<F: Future> MaybeSync<F> {
     /// # Safety
     ///
     /// `self` must be `Self::Sync` variant.
@@ -135,15 +135,15 @@ impl<F: Future> TrySync<F> {
     }
 }
 
-impl<F: Future> Future for TrySync<F> {
+impl<F: Future> Future for MaybeSync<F> {
     type Output = F::Output;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         // SAFETY: pinned data is not moved
         match unsafe { self.get_unchecked_mut() } {
             // SAFETY: res is `Self::Sync`
-            res @ TrySync::Sync(_) => Poll::Ready(unsafe { res.take_sync() }),
+            res @ MaybeSync::Sync(_) => Poll::Ready(unsafe { res.take_sync() }),
             // SAFETY: `fut` is pinned as `self` is
-            TrySync::Async(fut) => unsafe { Pin::new_unchecked(fut) }.poll(cx),
+            MaybeSync::Async(fut) => unsafe { Pin::new_unchecked(fut) }.poll(cx),
             _ => panic!("future polled after completion"),
         }
     }
@@ -159,20 +159,20 @@ mod tests {
 
     use futures::FutureExt;
 
-    use crate::TrySync;
+    use crate::MaybeSync;
 
     #[test]
-    fn try_sync() {
-        for try_sync in [TrySync::Sync(42), TrySync::Async(ready(42))] {
-            assert_eq!(try_sync.now_or_never(), Some(42));
+    fn maybe_sync() {
+        for maybe_sync in [MaybeSync::Sync(42), MaybeSync::Async(ready(42))] {
+            assert_eq!(maybe_sync.now_or_never(), Some(42));
         }
     }
 
     #[test]
     #[should_panic(expected = "future polled after completion")]
-    fn try_sync_polled_after_completion() {
-        let mut try_sync = pin!(TrySync::<Ready<i32>>::Sync(42));
-        assert_eq!(try_sync.as_mut().now_or_never(), Some(42));
-        try_sync.now_or_never();
+    fn maybe_sync_polled_after_completion() {
+        let mut maybe_sync = pin!(MaybeSync::<Ready<i32>>::Sync(42));
+        assert_eq!(maybe_sync.as_mut().now_or_never(), Some(42));
+        maybe_sync.now_or_never();
     }
 }

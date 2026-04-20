@@ -4,14 +4,14 @@ use futures::FutureExt;
 #[dyn_utils::dyn_trait] // make the trait dyn-compatible
 #[dyn_trait(dyn_utils::dyn_object)] // make the dyn-compatible trait usable with DynObject
 trait Callback {
-    #[dyn_trait(try_sync)] // add `call_try_sync` method with synchronous shortcut
+    #[dyn_trait(maybe_sync)] // add a synchronous shortcut in `call`
     #[dyn_trait(storage = dyn_utils::storage::Raw<128>)] // use `Raw<128> as default storage
     fn call(&self, arg: &str) -> impl Future<Output = ()> + Send;
 }
 
 struct HelloCallback;
 impl Callback for HelloCallback {
-    #[dyn_utils::sync] // make call_try_sync call use synchronous path
+    #[dyn_utils::sync] // make call use synchronous path
     async fn call(&self, arg: &str) {
         println!("Hello {arg}!");
     }
@@ -19,5 +19,5 @@ impl Callback for HelloCallback {
 
 fn main() {
     let callback: DynObject<dyn DynCallback> = DynObject::new(HelloCallback); // no allocation
-    callback.call_try_sync("world").now_or_never(); // prints "Hello world!"
+    callback.call("world").now_or_never(); // prints "Hello world!"
 }

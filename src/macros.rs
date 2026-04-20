@@ -75,8 +75,8 @@ pub use dyn_utils_macros::dyn_object;
 /// Methods with are return-position impl trait, such as async methods, can be decorated with
 /// `#[dyn_trait(...)]` attribute with the following arguments:
 ///
-/// - `try_sync`: (must be applied to method returning `Future`) Generates an additional method
-///   suffixed with `_try_sync`, with a optimized execution path when the concrete method is
+/// - `maybe_sync`: (must be applied to method returning `Future`) Makes the generated method return
+///   `MaybeSync<...>`, providing an optimized execution path when the concrete method is
 ///   synchronous and decorated with [`sync`](attr.sync.html).
 /// - `storage`: Defines the default storage in the returned `DynObject`. Each method adds a
 ///   generic storage parameter, whose default value is `dyn_utils::DefaultStorage` when not
@@ -88,7 +88,7 @@ pub use dyn_utils_macros::dyn_object;
 /// #[dyn_utils::dyn_trait(trait = DynCallback)] // make the trait dyn-compatible
 /// #[dyn_trait(dyn_utils::dyn_object)] // make the dyn-compatible trait usable with DynObject
 /// trait Callback {
-///     #[dyn_trait(try_sync)] // add `call_try_sync` method with synchronous shortcut
+///     #[dyn_trait(maybe_sync)] // add a synchronous shortcut in `call`
 ///     #[dyn_trait(storage = dyn_utils::storage::Raw<128>)] // use `Raw<128> as default storage
 ///     fn call(&self, arg: &str) -> impl Future<Output = ()> + Send;
 /// }
@@ -97,14 +97,14 @@ pub use dyn_utils_macros::dyn_trait;
 /// Mark an async method as internally synchronous.
 ///
 /// The trait declaration must have been decorated with [`dyn_trait`],
-/// and the trait method declaration with [`try_sync`](dyn_trait#method-attributes).
+/// and the trait method declaration with [`maybe_sync`](dyn_trait#method-attributes).
 ///
 /// # Examples
 ///
 /// ```rust
 /// #[dyn_utils::dyn_trait]
 /// trait Callback {
-///     #[dyn_trait(try_sync)]
+///     #[dyn_trait(maybe_sync)]
 ///     fn call(&self, arg: &str) -> impl Future<Output = ()> + Send;
 /// }
 ///
