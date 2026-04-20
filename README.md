@@ -1,11 +1,8 @@
 # dyn-utils
 
-*This crate is at an early stage of development and is not yet released. Despite being
-extensively tested with [miri], it contains a lot of unsafe code, and some uncaught 
-unsoundness may still remain.*
-
-*Documentation is available at <https://wyfo.github.io/dyn-utils/>. You can test the crate 
-using a git dependency:*
+[![crates.io](https://img.shields.io/crates/v/dyn-utils.svg)](https://crates.io/crates/dyn-utils)
+[![docs.rs](https://docs.rs/dyn-utils/badge.svg)](https://docs.rs/dyn-utils)
+[![license](https://img.shields.io/crates/l/dyn-utils.svg)](https://github.com/wyfo/dyn-utils#license)
 
 ```toml
 dyn-utils = { git = "https://github.com/wyfo/dyn-utils" }
